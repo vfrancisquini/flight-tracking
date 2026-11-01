@@ -1,0 +1,14 @@
+{
+  "ac": [
+    { "hex": "E48A12", "flight": "TAM3301 ", "r": "PR-MYA", "t": "A320", "lat": -23.4, "lon": -46.5, "alt_baro": 10000, "gs": 250, "track": 90, "baro_rate": 1000, "squawk": "2341", "seen_pos": 2, "seen": 1 },
+    { "hex": "e4c0de", "flight": "AZU4152", "lat": -23.43, "lon": -46.47, "alt_baro": "ground", "gs": 0, "true_heading": 180, "seen_pos": 1 },
+    { "hex": "e40001", "lat": -23.0, "lon": -46.0, "alt_geom": 3000, "mag_heading": 45, "seen": 5 },
+    { "hex": "e40002", "flight": "OLD123", "lat": -23.0, "lon": -46.0, "alt_baro": 5000, "seen_pos": 120 },
+    { "hex": "e40003", "flight": "NOPOS1", "alt_baro": 5000 }
+  ],
+  "msg": "No error",
+  "now": 1700000000000,
+  "total": 5,
+  "ctime": 1700000000000,
+  "ptime": 3
+}

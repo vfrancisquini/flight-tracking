@@ -1,0 +1,37 @@
+:root {
+  color-scheme: dark;
+  --bg: #111214;
+  --panel: rgba(28, 28, 30, 0.94);
+  --text: #f2f2f7;
+  --muted: #98989f;
+  --border: rgba(255, 255, 255, 0.1);
+  --warn: #ffcc00;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+#map { position: fixed; inset: 0; }
+
+#status {
+  position: fixed; top: 12px; left: 12px; right: 12px; width: fit-content; max-width: calc(100% - 24px);
+  padding: 6px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border);
+  font-size: 13px; font-variant-numeric: tabular-nums; z-index: 2;
+}
+#status.warn { color: var(--warn); }
+
+#panel {
+  position: fixed; z-index: 3; top: 56px; left: 12px; width: 300px; max-height: calc(100% - 80px); overflow: auto;
+  padding: 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+#panel[hidden] { display: none; }
+#panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#panel h2 { margin: 0; font-size: 20px; letter-spacing: 0.02em; }
+#panel .close { background: none; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; padding: 4px 8px; }
+#panel dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 12px 0 0; font-size: 14px; }
+#panel dt { color: var(--muted); }
+#panel dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px) {
+  #panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 50%; border-radius: 12px 12px 0 0; }
+}
