@@ -12,6 +12,18 @@ const POLL_MS = 10_000;
 const STALE_MS = 60_000;
 const FALLBACK_VIEW = { center: [-46.63, -23.55] as [number, number], zoom: 7 }; // São Paulo
 
+/** Vista inicial vinda da URL: ?lat=38.8777&lon=-9.0815&z=10 (tem prioridade sobre o GPS). */
+function viewFromUrl(): { center: [number, number]; zoom: number } | null {
+  const qs = new URLSearchParams(location.search);
+  const lat = Number(qs.get('lat'));
+  const lon = Number(qs.get('lon'));
+  if (!qs.has('lat') || !qs.has('lon') || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const z = Number(qs.get('z'));
+  return { center: [lon, lat], zoom: Number.isFinite(z) && z > 0 && z <= 20 ? z : 10 };
+}
+const URL_VIEW = viewFromUrl();
+
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const statusEl = $('#status');
 const panel = $<HTMLElement>('#panel');
@@ -19,7 +31,7 @@ const panel = $<HTMLElement>('#panel');
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/dark',
-  ...FALLBACK_VIEW,
+  ...(URL_VIEW ?? FALLBACK_VIEW),
   attributionControl: {
     compact: true,
     customAttribution:
@@ -113,7 +125,7 @@ map.on('load', () => {
   }, 1000);
   poller.start();
 
-  navigator.geolocation?.getCurrentPosition(
+  if (!URL_VIEW) navigator.geolocation?.getCurrentPosition(
     (pos) => map.jumpTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 8 }),
     () => undefined,
     { timeout: 8000, maximumAge: 600_000 },
