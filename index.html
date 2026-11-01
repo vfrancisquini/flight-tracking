@@ -11,10 +11,20 @@
     <a id="probe-link" href="probe.html">Testar APIs</a>
     <aside id="panel" hidden aria-live="polite">
       <header>
-        <h2></h2>
+        <img class="logo" alt="" hidden />
+        <div class="title">
+          <h2></h2>
+          <p class="airline"></p>
+        </div>
         <button class="close" type="button" aria-label="Fechar">×</button>
       </header>
+      <p class="route-line" hidden></p>
+      <figure class="photo" hidden>
+        <a target="_blank" rel="noopener"><img alt="Foto da aeronave" /></a>
+        <figcaption></figcaption>
+      </figure>
       <dl></dl>
+      <p class="note" hidden>Horários estimados pela distância e velocidade atuais; não são os horários oficiais do voo.</p>
     </aside>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -1,13 +1,13 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { DATA_MODE, fetchIpLocation, fetchLive, fetchRoute } from './api';
+import { DATA_MODE, fetchAircraftInfo, fetchIpLocation, fetchLive, fetchRoute, type AircraftInfo } from './api';
 import { fmtAge, fmtAltitude, fmtHeading, fmtSpeed, fmtVRate } from './format';
 import { routeFitsPosition, viewportToQuery } from './geo';
 import { AircraftLayer } from './map/aircraftLayer';
 import { RouteLayer } from './map/routeLayer';
 import { Poller } from './poller';
-import { RouteStore, type Airport } from './routes';
+import { flightProgress, RouteStore, type Airport, type Route } from './routes';
 import { AircraftStore } from './store';
 import type { Aircraft } from './types';
 
@@ -40,8 +40,8 @@ const map = new maplibregl.Map({
     compact: true,
     customAttribution:
       'Voos: <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a> (ODbL) · ' +
-      '<a href="https://adsb.fi" target="_blank" rel="noopener">adsb.fi</a> · ' +
-      '<a href="https://airplanes.live" target="_blank" rel="noopener">airplanes.live</a>',
+      'Rotas: <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a> · ' +
+      '<a href="https://hexdb.io" target="_blank" rel="noopener">hexdb</a>',
   },
 });
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'bottom-right');
@@ -93,30 +93,89 @@ function renderStatus(): void {
 
 const fmtAirport = (ap: Airport) => [ap.city, ap.iata ?? ap.icao].filter(Boolean).join(' · ') || '—';
 
-function routeRows(a: Aircraft): [string, string][] {
+const fmtClock = (at: number | null) =>
+  at === null ? '—' : `≈ ${new Date(at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+function routeRows(a: Aircraft, route: Route | null | undefined): [string, string][] {
   if (!a.callsign) return [['Rota', 'indisponível']];
-  routes.want(a.callsign, true);
-  const route = routes.get(a.callsign);
   if (route === undefined) return [['Rota', routes.failed(a.callsign) ? 'indisponível' : 'buscando…']];
   if (route === null) return [['Rota', 'desconhecida']];
   const rows: [string, string][] = [['Origem', fmtAirport(route.origin)], ['Destino', fmtAirport(route.destination)]];
-  if (!routeFitsPosition(route.origin, route.destination, a)) rows.push(['Atenção', 'a rota não confere com a posição']);
+  if (!routeFitsPosition(route.origin, route.destination, a)) {
+    rows.push(['Atenção', 'a rota não confere com a posição']);
+    return rows;
+  }
+  const p = flightProgress(route, a, a.speedKmh, Date.now());
+  rows.push(
+    ['Partida (estimada)', fmtClock(p.departedAt)],
+    ['Chegada (estimada)', fmtClock(p.arrivesAt)],
+    ['Progresso', `${p.percent}% · faltam ${Math.round(p.remainingKm)} km`],
+  );
   return rows;
 }
+
+const infoLoading = new Set<string>();
+const aircraftInfo = new Map<string, AircraftInfo | null>();
+
+function wantAircraftInfo(hex: string): void {
+  if (aircraftInfo.has(hex) || infoLoading.has(hex)) return;
+  infoLoading.add(hex);
+  void fetchAircraftInfo(hex)
+    .then((info) => aircraftInfo.set(hex, info))
+    .catch(() => aircraftInfo.set(hex, null))
+    .finally(() => infoLoading.delete(hex));
+}
+
+/** Só troca a imagem quando muda: o painel redesenha a cada segundo. */
+function setImage(img: HTMLImageElement, src: string | null): void {
+  const value = src ?? '';
+  if (img.dataset.src === value) return;
+  img.dataset.src = value;
+  img.hidden = !src;
+  if (src) img.src = src;
+  else img.removeAttribute('src');
+}
+
+const logoEl = panel.querySelector<HTMLImageElement>('.logo')!;
+logoEl.addEventListener('error', () => (logoEl.hidden = true));
 
 function renderPanel(hex: string | null): void {
   const a = hex ? store.byHex.get(hex) : undefined;
   panel.hidden = !a;
   routeLayer.update(a?.hex ?? null, Date.now());
   if (!a) return;
+  if (a.callsign) routes.want(a.callsign, true);
+  wantAircraftInfo(a.hex);
+  const route = a.callsign ? routes.get(a.callsign) : null;
+  const info = aircraftInfo.get(a.hex);
+  const airline = route?.airline;
+
+  setImage(logoEl, airline?.iata ? `https://pics.avs.io/96/96/${airline.iata}.png` : null);
+  panel.querySelector('.airline')!.textContent = airline?.name ?? info?.owner ?? '';
+  const routeLine = panel.querySelector<HTMLElement>('.route-line')!;
+  routeLine.hidden = !route;
+  if (route) routeLine.textContent = `${route.origin.city ?? route.origin.iata ?? '?'} → ${route.destination.city ?? route.destination.iata ?? '?'}`;
+
+  const figure = panel.querySelector<HTMLElement>('.photo')!;
+  figure.hidden = !info?.photo;
+  if (info?.photo) {
+    setImage(figure.querySelector('img')!, info.photo.src);
+    figure.querySelector('a')!.href = info.photo.link;
+    figure.querySelector('figcaption')!.textContent = info.photo.credit;
+  }
+
+  const rowsRoute = routeRows(a, route);
+  panel.querySelector<HTMLElement>('.note')!.hidden = !rowsRoute.some(([k]) => k.startsWith('Partida'));
   const rows: [string, string][] = [
-    ...routeRows(a),
+    ...rowsRoute,
+    ['Aeronave', [info?.manufacturer, info?.model ?? a.type].filter(Boolean).join(' ') || '—'],
+    ['Operador', info?.owner ?? '—'],
+    ['País de registro', info?.country ?? '—'],
+    ['Matrícula', a.registration ?? '—'],
     ['Altitude', fmtAltitude(a)],
     ['Velocidade', fmtSpeed(a)],
     ['Rumo', fmtHeading(a)],
     ['Razão vertical', fmtVRate(a)],
-    ['Matrícula', a.registration ?? '—'],
-    ['Modelo', a.type ?? '—'],
     ['Squawk', a.squawk ?? '—'],
     ['ICAO 24-bit', a.hex.toUpperCase()],
     ['Última posição', `há ${fmtAge(a.positionAt)}`],

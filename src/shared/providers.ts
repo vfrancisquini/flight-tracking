@@ -53,6 +53,9 @@ export const TELEMETRY_PROVIDERS: TelemetryProvider[] = [
 
 export const ENRICH = {
   route: (cs: string) => `https://api.adsbdb.com/v0/callsign/${cs}`,
+  airline: (icao: string) => `https://api.adsbdb.com/v0/airline/${icao}`,
+  hexdbRoute: (cs: string) => `https://hexdb.io/api/v1/route/icao/${cs}`,
+  hexdbAirport: (icao: string) => `https://hexdb.io/api/v1/airport/icao/${icao}`,
   aircraft: (hex: string) => `https://api.adsbdb.com/v0/aircraft/${hex}`,
   photo: (hex: string) => `https://api.planespotters.net/pub/photos/hex/${hex}`,
 };

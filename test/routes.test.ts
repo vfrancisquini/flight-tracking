@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { greatCircle, haversineKm, routeFitsPosition } from '../src/geo';
-import { parseRoute, RouteStore, type Route } from '../src/routes';
+import { flightProgress, parseHexdbAirport, parseHexdbRoute, parseRoute, RouteStore, type Route } from '../src/routes';
 
 const LIS = { lat: 38.78, lon: -9.14 };
 const BER = { lat: 52.35, lon: 13.49 };
@@ -39,6 +39,33 @@ describe('parseRoute', () => {
     const route = parseRoute({ response: { flightroute: { origin: airport, destination: airport } } });
     expect(route?.destination).toEqual({ iata: 'LIS', icao: 'LPPT', city: 'Lisbon', lat: 38.78, lon: -9.14 });
     expect(parseRoute({ response: 'unknown callsign' })).toBeNull();
+  });
+});
+
+describe('hexdb', () => {
+  it('lê a rota, com escalas, e o aeroporto', () => {
+    expect(parseHexdbRoute({ route: 'GCTS-LFLL' })).toEqual({ origin: 'GCTS', destination: 'LFLL' });
+    expect(parseHexdbRoute({ route: 'AAAA-BBBB-CCCC' })).toEqual({ origin: 'AAAA', destination: 'CCCC' });
+    expect(parseHexdbRoute(null)).toBeNull();
+    expect(parseHexdbAirport({ iata: 'LIS', icao: 'LPPT', region_name: 'Lisboa', latitude: 38.78, longitude: -9.14 })?.city).toBe('Lisboa');
+  });
+});
+
+describe('flightProgress', () => {
+  const route = { origin: LIS, destination: BER } as unknown as Route;
+  const now = 1_000_000_000;
+
+  it('estima partida e chegada pela distância e velocidade', () => {
+    const p = flightProgress(route, { lat: 46, lon: 2 }, 800, now);
+    expect(p.percent).toBeGreaterThan(30);
+    expect(p.percent).toBeLessThan(70);
+    expect(p.arrivesAt! - now).toBeCloseTo((p.remainingKm / 800) * 3600_000, 3);
+    expect(p.departedAt!).toBeLessThan(now);
+  });
+
+  it('não estima com velocidade baixa ou desconhecida', () => {
+    expect(flightProgress(route, LIS, 150, now).arrivesAt).toBeNull();
+    expect(flightProgress(route, LIS, null, now).departedAt).toBeNull();
   });
 });
 

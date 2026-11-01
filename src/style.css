@@ -27,6 +27,15 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 #panel[hidden] { display: none; }
 #panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #panel h2 { margin: 0; font-size: 20px; letter-spacing: 0.02em; }
+#panel .title { flex: 1; min-width: 0; }
+#panel .airline { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+#panel .logo { width: 40px; height: 40px; border-radius: 8px; background: #fff; object-fit: contain; padding: 2px; }
+#panel .logo[hidden], #panel .photo[hidden], #panel .route-line[hidden], #panel .note[hidden] { display: none; }
+#panel .route-line { margin: 12px 0 0; font-size: 15px; font-weight: 600; }
+#panel .photo { margin: 12px 0 0; }
+#panel .photo img { display: block; width: 100%; border-radius: 8px; }
+#panel .photo figcaption { margin-top: 4px; color: var(--muted); font-size: 11px; }
+#panel .note { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
 #panel .close { background: none; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; padding: 4px 8px; }
 #panel dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 12px 0 0; font-size: 14px; }
 #panel dt { color: var(--muted); }

@@ -1,3 +1,4 @@
+import { haversineKm, type LatLon } from './geo';
 import { CALLSIGN_RE } from './shared/providers';
 
 export interface Airport {
@@ -8,9 +9,16 @@ export interface Airport {
   lon: number;
 }
 
+export interface Airline {
+  name: string;
+  iata: string | null;
+  country: string | null;
+}
+
 export interface Route {
   origin: Airport;
   destination: Airport;
+  airline: Airline | null;
 }
 
 function parseAirport(raw: unknown): Airport | null {
@@ -19,12 +27,52 @@ function parseAirport(raw: unknown): Airport | null {
   return { iata: a.iata_code ?? null, icao: a.icao_code ?? null, city: a.municipality ?? null, lat: a.latitude!, lon: a.longitude! };
 }
 
-/** Formato do adsbdb: response.flightroute.{origin,destination}. */
+export function parseAirline(raw: unknown): Airline | null {
+  const a = raw as { name?: string; iata?: string; country?: string } | null;
+  return a?.name ? { name: a.name, iata: a.iata ?? null, country: a.country ?? null } : null;
+}
+
+/** Formato do adsbdb: response.flightroute.{origin,destination,airline}. */
 export function parseRoute(raw: unknown): Route | null {
-  const r = (raw as { response?: { flightroute?: { origin?: unknown; destination?: unknown } } } | null)?.response?.flightroute;
+  const r = (raw as { response?: { flightroute?: { origin?: unknown; destination?: unknown; airline?: unknown } } } | null)?.response?.flightroute;
   const origin = parseAirport(r?.origin);
   const destination = parseAirport(r?.destination);
-  return origin && destination ? { origin, destination } : null;
+  return origin && destination ? { origin, destination, airline: parseAirline(r?.airline) } : null;
+}
+
+/** Formato do hexdb: {"route":"GCTS-LFLL"}. Com escalas, fica com o primeiro e o último. */
+export function parseHexdbRoute(raw: unknown): { origin: string; destination: string } | null {
+  const codes = (raw as { route?: string } | null)?.route?.split('-') ?? [];
+  return codes.length >= 2 ? { origin: codes[0]!, destination: codes.at(-1)! } : null;
+}
+
+export function parseHexdbAirport(raw: unknown): Airport | null {
+  const a = raw as { iata?: string; icao?: string; airport?: string; region_name?: string; latitude?: number; longitude?: number } | null;
+  if (!a || !Number.isFinite(a.latitude) || !Number.isFinite(a.longitude)) return null;
+  return { iata: a.iata ?? null, icao: a.icao ?? null, city: a.region_name ?? a.airport ?? null, lat: a.latitude!, lon: a.longitude! };
+}
+
+export interface Progress {
+  percent: number;
+  remainingKm: number;
+  /** Epoch (ms). Estimativas pela distância e velocidade, não horários oficiais. */
+  departedAt: number | null;
+  arrivesAt: number | null;
+}
+
+/** Abaixo disto o avião está a subir ou a aproximar-se e a conta deixa de fazer sentido. */
+const MIN_ESTIMATE_KMH = 300;
+
+export function flightProgress(route: Route, position: LatLon, speedKmh: number | null, now: number): Progress {
+  const flownKm = haversineKm(route.origin, position);
+  const remainingKm = haversineKm(position, route.destination);
+  const usable = speedKmh !== null && speedKmh >= MIN_ESTIMATE_KMH;
+  return {
+    percent: Math.round((100 * flownKm) / Math.max(1, flownKm + remainingKm)),
+    remainingKm,
+    departedAt: usable ? now - (flownKm / speedKmh) * 3600_000 : null,
+    arrivesAt: usable ? now + (remainingKm / speedKmh) * 3600_000 : null,
+  };
 }
 
 const CONCURRENCY = 3;

@@ -1,6 +1,6 @@
-import { ENRICH, fetchFirstOk, TELEMETRY_PROVIDERS, type LiveQuery } from './shared/providers';
+import { ENRICH, fetchFirstOk, MAX_RADIUS_NM, TELEMETRY_PROVIDERS, type LiveQuery } from './shared/providers';
 import { normalizeReadsb } from './normalize';
-import { parseRoute, type Route } from './routes';
+import { parseAirline, parseHexdbAirport, parseHexdbRoute, parseRoute, type Route } from './routes';
 import type { Aircraft } from './types';
 
 /**
@@ -22,22 +22,78 @@ const ROUTE_CACHE_MS = 24 * 3600_000;
  * Cloudflare recebe 429. Guarda no navegador para não repetir pedidos ao recarregar.
  */
 export async function fetchRoute(callsign: string): Promise<Route | null> {
-  const key = `route:${callsign}`;
+  return cached(`route2:${callsign}`, ROUTE_CACHE_MS, async () => {
+    const route = parseRoute(await getJson(ENRICH.route(callsign)));
+    return route ?? fetchHexdbRoute(callsign);
+  });
+}
+
+/** Segunda fonte, para voos que o adsbdb não conhece. Falhas aqui contam como "sem rota". */
+async function fetchHexdbRoute(callsign: string): Promise<Route | null> {
   try {
-    const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as { at: number; route: Route | null } | null;
-    if (saved && Date.now() - saved.at < ROUTE_CACHE_MS) return saved.route;
+    const codes = parseHexdbRoute(await getJson(ENRICH.hexdbRoute(callsign)));
+    if (!codes) return null;
+    const [origin, destination, airlines] = await Promise.all([
+      getJson(ENRICH.hexdbAirport(codes.origin)),
+      getJson(ENRICH.hexdbAirport(codes.destination)),
+      getJson(ENRICH.airline(callsign.slice(0, 3))).catch(() => null),
+    ]);
+    const o = parseHexdbAirport(origin);
+    const d = parseHexdbAirport(destination);
+    const list = (airlines as { response?: unknown[] } | null)?.response;
+    return o && d ? { origin: o, destination: d, airline: parseAirline(Array.isArray(list) ? list[0] : null) } : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface AircraftInfo {
+  manufacturer: string | null;
+  model: string | null;
+  owner: string | null;
+  country: string | null;
+  photo: { src: string; link: string; credit: string } | null;
+}
+
+/** Fabricante, modelo, dono e foto. As duas fontes têm CORS. null se nenhuma conhecer o avião. */
+export async function fetchAircraftInfo(hex: string): Promise<AircraftInfo | null> {
+  return cached(`aircraft1:${hex}`, ROUTE_CACHE_MS * 7, async () => {
+    const [details, photos] = await Promise.all([
+      getJson(ENRICH.aircraft(hex)).catch(() => null),
+      getJson(ENRICH.photo(hex)).catch(() => null),
+    ]);
+    const a = (details as { response?: { aircraft?: Record<string, string | null> } } | null)?.response?.aircraft;
+    const p = (photos as { photos?: { thumbnail_large?: { src?: string }; link?: string; photographer?: string }[] } | null)?.photos?.[0];
+    const src = p?.thumbnail_large?.src;
+    const photo = src ? { src, link: p?.link ?? src, credit: `© ${p?.photographer ?? 'Planespotters.net'} / Planespotters.net` } : null;
+    if (!a && !photo) return null;
+    return { manufacturer: a?.manufacturer ?? null, model: a?.type ?? null, owner: a?.registered_owner ?? null, country: a?.registered_owner_country_name ?? null, photo };
+  });
+}
+
+/** Corpo JSON; null em 404; lança erro nas outras falhas. */
+async function getJson(url: string): Promise<unknown> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** Guarda no navegador. Falhas (lançadas por `load`) não ficam guardadas. */
+async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as { at: number; value: T } | null;
+    if (saved && Date.now() - saved.at < ttlMs) return saved.value;
   } catch {
     // Sem armazenamento disponível: segue para a rede.
   }
-  const res = await fetch(ENRICH.route(callsign), { signal: AbortSignal.timeout(15000) });
-  if (res.status !== 404 && !res.ok) throw new Error(`HTTP ${res.status}`);
-  const route = res.ok ? parseRoute(await res.json()) : null;
+  const value = await load();
   try {
-    localStorage.setItem(key, JSON.stringify({ at: Date.now(), route }));
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), value }));
   } catch {
-    // Armazenamento cheio ou bloqueado: a rota continua em memória.
+    // Armazenamento cheio ou bloqueado: o valor continua em memória.
   }
-  return route;
+  return value;
 }
 
 /** Localização aproximada pelo IP, calculada pelo Worker. null se não houver. */
@@ -53,8 +109,11 @@ export async function fetchIpLocation(): Promise<{ lat: number; lon: number } | 
 export async function fetchLive(q: LiveQuery): Promise<LiveResult> {
   const receivedAt = Date.now();
   if (DATA_MODE === 'proxy') {
-    const params = new URLSearchParams({ lat: q.lat.toFixed(2), lon: q.lon.toFixed(2), dist: String(Math.ceil(q.distNm)) });
+    // Centro e raio arredondados (com folga): pequenos movimentos reaproveitam o cache do Worker.
+    const dist = Math.min(MAX_RADIUS_NM, Math.ceil((q.distNm + 6) / 25) * 25);
+    const params = new URLSearchParams({ lat: q.lat.toFixed(1), lon: q.lon.toFixed(1), dist: String(dist) });
     const res = await fetch(`/api/live?${params}`, { signal: AbortSignal.timeout(15000) });
+    if (res.status === 502) throw new Error('fonte de voos ocupada, tentando de novo');
     if (!res.ok) throw new Error(`Worker respondeu HTTP ${res.status}`);
     return { aircraft: normalizeReadsb(await res.json(), receivedAt), provider: res.headers.get('x-provider') ?? '?' };
   }
