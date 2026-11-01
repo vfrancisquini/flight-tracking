@@ -1,5 +1,6 @@
-import { fetchFirstOk, TELEMETRY_PROVIDERS, type LiveQuery } from './shared/providers';
+import { ENRICH, fetchFirstOk, TELEMETRY_PROVIDERS, type LiveQuery } from './shared/providers';
 import { normalizeReadsb } from './normalize';
+import { parseRoute, type Route } from './routes';
 import type { Aircraft } from './types';
 
 /**
@@ -11,6 +12,25 @@ export const DATA_MODE: 'proxy' | 'direct' = import.meta.env.VITE_DATA_MODE === 
 export interface LiveResult {
   aircraft: Aircraft[];
   provider: string;
+}
+
+/** null quando a fonte não conhece a rota; lança erro em falha passageira. */
+export async function fetchRoute(callsign: string): Promise<Route | null> {
+  const url = DATA_MODE === 'proxy' ? `/api/route/${callsign}` : ENRICH.route(callsign);
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseRoute(await res.json());
+}
+
+/** Localização aproximada pelo IP, calculada pelo Worker. null se não houver. */
+export async function fetchIpLocation(): Promise<{ lat: number; lon: number } | null> {
+  try {
+    const res = await fetch('/api/geo', { signal: AbortSignal.timeout(5000) });
+    return res.ok ? ((await res.json()) as { lat: number; lon: number }) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchLive(q: LiveQuery): Promise<LiveResult> {

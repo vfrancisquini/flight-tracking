@@ -11,6 +11,7 @@
  *   GET /api/route/:cs               origem/destino (adsbdb)
  *   GET /api/aircraft/:hex           matrícula/modelo/operador (adsbdb)
  *   GET /api/photo/:hex              foto (planespotters)
+ *   GET /api/geo                     localização aproximada do visitante, pelo IP (dados da Cloudflare)
  */
 import {
   CALLSIGN_RE,
@@ -22,7 +23,7 @@ import {
 } from '../../src/shared/providers';
 
 interface Ctx {
-  request: Request;
+  request: Request & { cf?: { latitude?: string; longitude?: string } };
   params: { path?: string | string[] };
   waitUntil(p: Promise<unknown>): void;
 }
@@ -71,6 +72,7 @@ function plan(kind: string | undefined, arg: string | undefined, search: URLSear
 export async function onRequestGet(ctx: Ctx): Promise<Response> {
   const url = new URL(ctx.request.url);
   const segs = Array.isArray(ctx.params.path) ? ctx.params.path : [ctx.params.path ?? ''];
+  if (segs[0] === 'geo') return geo(ctx.request);
   const p = plan(segs[0], segs[1], url.searchParams);
   if (p instanceof Response) return p;
 
@@ -112,6 +114,16 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
     }
     return json({ error: 'upstream_unavailable', detail: e instanceof Error ? e.message : String(e) }, 502);
   }
+}
+
+/** Específico de cada visitante: nunca entra em cache nem é registado. */
+function geo(request: Ctx['request']): Response {
+  const lat = parseFloat(request.cf?.latitude ?? '');
+  const lon = parseFloat(request.cf?.longitude ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return json({ error: 'not_found' }, 404);
+  return new Response(JSON.stringify({ lat, lon }), {
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
 }
 
 function json(body: unknown, status = 200): Response {

@@ -58,6 +58,15 @@ describe('Worker /api', () => {
     expect(await res.text()).toContain('abc123');
   });
 
+  it('/geo devolve a localização da Cloudflare sem cache e 404 se não houver', async () => {
+    const c = ctx('geo');
+    const withCf = { ...c, request: Object.assign(c.request, { cf: { latitude: '38.72', longitude: '-9.13' } }) };
+    const res = await onRequestGet(withCf);
+    expect(await res.json()).toEqual({ lat: 38.72, lon: -9.13 });
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect((await onRequestGet(ctx('geo'))).status).toBe(404);
+  });
+
   it('devolve 502 quando todas as fontes falham', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network'));
     expect((await onRequestGet(ctx('callsign/TAM3301'))).status).toBe(502);

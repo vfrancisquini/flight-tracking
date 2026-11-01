@@ -29,6 +29,42 @@ export function destinationPoint(from: LatLon, bearingDeg: number, distKm: numbe
 }
 
 /**
+ * Pontos [lon, lat] do grande círculo entre a e b. As longitudes seguem contínuas
+ * (podem passar de ±180) para a linha não atravessar o mapa no antimeridiano.
+ */
+export function greatCircle(a: LatLon, b: LatLon, segments = 48): [number, number][] {
+  const δ = haversineKm(a, b) / R_KM;
+  if (δ < 1e-6) return [[a.lon, a.lat], [b.lon, b.lat]];
+  const φ1 = rad(a.lat);
+  const λ1 = rad(a.lon);
+  const φ2 = rad(b.lat);
+  const λ2 = rad(b.lon);
+  const points: [number, number][] = [];
+  for (let i = 0; i <= segments; i++) {
+    const f = i / segments;
+    const A = Math.sin((1 - f) * δ) / Math.sin(δ);
+    const B = Math.sin(f * δ) / Math.sin(δ);
+    const x = A * Math.cos(φ1) * Math.cos(λ1) + B * Math.cos(φ2) * Math.cos(λ2);
+    const y = A * Math.cos(φ1) * Math.sin(λ1) + B * Math.cos(φ2) * Math.sin(λ2);
+    const z = A * Math.sin(φ1) + B * Math.sin(φ2);
+    let lon = deg(Math.atan2(y, x));
+    const prev = points[i - 1]?.[0];
+    if (prev !== undefined) lon += 360 * Math.round((prev - lon) / 360);
+    points.push([lon, deg(Math.atan2(z, Math.hypot(x, y)))]);
+  }
+  return points;
+}
+
+/**
+ * As rotas vêm do callsign e podem estar desatualizadas. Se passar pela posição
+ * atual obrigaria a um desvio grande, a rota não é a deste voo.
+ */
+export function routeFitsPosition(origin: LatLon, destination: LatLon, position: LatLon): boolean {
+  const viaPosition = haversineKm(origin, position) + haversineKm(position, destination);
+  return viaPosition <= haversineKm(origin, destination) * 1.25 + 150;
+}
+
+/**
  * As APIs pedem centro + raio, o mapa dá um retângulo. Usa o círculo que
  * cobre o viewport inteiro; se passar do máximo, corta e sinaliza.
  */

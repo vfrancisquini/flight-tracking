@@ -36,6 +36,12 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   #panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 50%; border-radius: 12px 12px 0 0; }
 }
 
+.me-dot {
+  width: 16px; height: 16px; border-radius: 50%; background: #0a84ff; border: 2px solid #fff;
+  box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.3);
+}
+.me-dot.approx { background: #98989f; box-shadow: 0 0 0 14px rgba(152, 152, 159, 0.25); }
+
 #probe-link {
   position: fixed; top: 12px; right: 12px; z-index: 2; padding: 6px 12px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-size: 13px; text-decoration: none;
