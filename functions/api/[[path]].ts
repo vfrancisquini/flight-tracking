@@ -31,6 +31,7 @@ const USER_AGENT = 'radar-voos/0.1 (projeto pessoal, nao comercial)';
 
 /** Segundos de cache na edge por tipo. */
 const TTL = { live: 5, lookup: 10, route: 86_400, aircraft: 604_800, photo: 86_400 } as const;
+const STALE_TTL = 120;
 
 interface Plan {
   urls: string[];
@@ -77,6 +78,8 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
   const key = new Request(url.toString(), { method: 'GET' });
   const hit = await cache.match(key);
   if (hit) return hit;
+  // Última resposta boa da telemetria, para aguentar 429 passageiros da fonte.
+  const staleKey = segs[0] === 'live' ? new Request(`${url.origin}/__stale${url.pathname}${url.search}`, { method: 'GET' }) : null;
 
   try {
     const { res, index } = await fetchFirstOk(p.urls, {
@@ -92,9 +95,21 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
     });
     // 404 também é informação útil (ex.: callsign sem rota conhecida) — cacheia.
     if (res.ok || res.status === 404) ctx.waitUntil(cache.put(key, out.clone()));
+    if (staleKey && res.ok) {
+      const headers = new Headers(out.headers);
+      headers.set('cache-control', `public, max-age=${STALE_TTL}`);
+      ctx.waitUntil(cache.put(staleKey, new Response(out.clone().body, { headers })));
+    }
     return out;
   } catch (e) {
     console.error(e);
+    const stale = staleKey && (await cache.match(staleKey));
+    if (stale) {
+      const headers = new Headers(stale.headers);
+      headers.set('cache-control', 'no-store');
+      headers.set('x-provider', `${stale.headers.get('x-provider') ?? '?'} (dados em cache)`);
+      return new Response(stale.body, { headers });
+    }
     return json({ error: 'upstream_unavailable', detail: e instanceof Error ? e.message : String(e) }, 502);
   }
 }

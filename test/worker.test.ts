@@ -47,6 +47,17 @@ describe('Worker /api', () => {
     expect(String(spy.mock.calls[0]?.[0])).toBe('https://api.adsbdb.com/v0/callsign/AZU4152');
   });
 
+  it('serve a última telemetria boa, identificada, quando todas as fontes falham', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{"ac":[{"hex":"abc123"}]}'));
+    await onRequestGet(ctx('live?lat=1&lon=2&dist=3'));
+    cacheStore.delete('https://radar.test/api/live?lat=1&lon=2&dist=3');
+    spy.mockResolvedValue(new Response('', { status: 429 }));
+    const res = await onRequestGet(ctx('live?lat=1&lon=2&dist=3'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-provider')).toBe('adsb.lol (dados em cache)');
+    expect(await res.text()).toContain('abc123');
+  });
+
   it('devolve 502 quando todas as fontes falham', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network'));
     expect((await onRequestGet(ctx('callsign/TAM3301'))).status).toBe(502);
