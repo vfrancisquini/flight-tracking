@@ -19,7 +19,8 @@
 </head>
 <body>
 <h1>Fase 0: teste das APIs a partir do navegador</h1>
-<p>Cada pedido é feito <b>diretamente deste navegador</b>. Se der <span class="bad">bloqueado</span>, é CORS
+<p>As linhas <b>Worker</b> testam o proxy do próprio site (só existe no Cloudflare Pages; noutro sítio dão HTTP 404).
+As restantes são feitas <b>diretamente deste navegador</b>. Se der <span class="bad">bloqueado</span>, é CORS
 (ou rede): essa fonte só funciona através do Worker. Depois de terminar, clique em <b>Copiar resultado</b> e cole na conversa.</p>
 <p>
   <label>Link do Google Maps ou "lat, lon": <input id="paste" size="40" placeholder="https://www.google.com/maps/@-23.43,-46.47,12z"></label>
@@ -48,7 +49,7 @@ async function probe(name, url, summarize, init) {
     row.status = res.status;
     row.cors = 'ok';
     row.headers = Object.fromEntries(
-      [...res.headers].filter(([k]) => /rate|retry|cache-control|content-type|access-control/i.test(k)),
+      [...res.headers].filter(([k]) => /rate|retry|cache-control|content-type|access-control|x-provider/i.test(k)),
     );
     const text = await res.text();
     let body; try { body = JSON.parse(text); } catch { body = null; }
@@ -137,6 +138,10 @@ $('run').onclick = async () => {
     'airplanes.live': `https://api.airplanes.live/v2/point/${lat}/${lon}/${dist}`,
   };
   let sample;
+  // Worker (mesma origem): só existe quando o site está no Cloudflare Pages.
+  const viaWorker = await probe('Worker /api/live', `api/live?lat=${lat}&lon=${lon}&dist=${dist}`, acSummary);
+  const wl = viaWorker.body && viaWorker.body.ac;
+  if (wl) sample = wl.find((a) => a.flight && a.flight.trim() && a.hex && !a.hex.startsWith('~'));
   for (const [n, u] of Object.entries(live)) {
     const r = await probe(`telemetria ${n}`, u, acSummary);
     const list = r.body && (r.body.ac || r.body.aircraft);
@@ -145,6 +150,9 @@ $('run').onclick = async () => {
   const cs = sample ? sample.flight.trim() : 'TAM3301';
   const hex = sample ? sample.hex : 'e48a12';
 
+  await probe(`Worker /api/callsign (${cs})`, `api/callsign/${cs}`, acSummary);
+  await probe(`Worker /api/route (${cs})`, `api/route/${cs}`,
+    (b) => { const r = b.response?.flightroute; return r ? `${r.origin?.icao_code} → ${r.destination?.icao_code}` : b.response; });
   await probe(`callsign adsb.lol (${cs})`, `https://api.adsb.lol/v2/callsign/${cs}`, acSummary);
   await probe(`rota adsbdb (${cs})`, `https://api.adsbdb.com/v0/callsign/${cs}`,
     (b) => { const r = b.response?.flightroute; return r ? `${r.origin?.icao_code} ${r.origin?.name} → ${r.destination?.icao_code} ${r.destination?.name}` : b.response; });

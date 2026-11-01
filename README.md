@@ -38,9 +38,22 @@ npm run cf:deploy  # publica no Cloudflare Pages
 
 `http://localhost:5173/probe.html` → página de teste das APIs.
 
+## Publicar no Cloudflare Pages (site + Worker)
+
+As APIs de telemetria **não aceitam chamadas diretas do navegador** (CORS, confirmado na fase 0),
+por isso o site precisa do Worker em `/api`. O Cloudflare Pages serve os dois juntos, de graça:
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
+2. Escolha o repositório `flight-tracking`, branch `main`.
+3. Build settings: preset **None**, build command `npm run build`, output directory `dist`.
+4. **Save and Deploy**. A pasta `functions/` é detectada sozinha e vira o `/api`.
+
+Cada push no `main` publica de novo. O endereço fica `https://<projeto>.pages.dev`.
+Para confirmar o Worker, abra `https://<projeto>.pages.dev/probe.html`: as linhas **Worker** devem dar `ok`.
+
 ## Roteiro
 
-- [x] Fase 0: página de teste das APIs (falta executar no navegador)
+- [x] Fase 0: página de teste das APIs. Resultado: telemetria só via Worker (CORS); adsbdb, Planespotters, OurAirports e OpenFreeMap funcionam direto
 - [x] Fase 1: mapa ao vivo, polling por viewport, ícones girados, interpolação, seleção e painel de telemetria
 - [ ] Fase 2: rota provável (adsbdb), dados da aeronave, foto, trilha
 - [ ] Fase 3: "Perto de mim" (raio de 50 km + lista)
