@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Teste de APIs</title>
+<style>
+  :root { color-scheme: light dark; --ok:#1f9d55; --bad:#d64545; --muted:#888; }
+  body { font-family: system-ui, sans-serif; margin: 0 auto; padding: 16px; max-width: 1100px; }
+  h1 { font-size: 20px; } p { line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(128,128,128,.25); vertical-align: top; }
+  td.url { word-break: break-all; color: var(--muted); max-width: 380px; }
+  .ok { color: var(--ok); font-weight: 600; } .bad { color: var(--bad); font-weight: 600; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; cursor: pointer; }
+  textarea { width: 100%; height: 160px; font: 12px ui-monospace, monospace; margin-top: 12px; }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>Fase 0: teste das APIs a partir do navegador</h1>
+<p>Cada pedido é feito <b>diretamente deste navegador</b>. Se der <span class="bad">bloqueado</span>, é CORS
+(ou rede): essa fonte só funciona através do Worker. Depois de terminar, clique em <b>Copiar resultado</b> e cole na conversa.</p>
+<p>
+  <label>Link do Google Maps ou "lat, lon": <input id="paste" size="40" placeholder="https://www.google.com/maps/@-23.43,-46.47,12z"></label>
+  <button id="geo" type="button">Usar minha localização</button>
+</p>
+<p>
+  <label>Centro: <input id="lat" value="-23.43" size="7"> <input id="lon" value="-46.47" size="7"></label>
+  <label>Raio (NM): <input id="dist" value="50" size="4"></label>
+  <button id="run">Executar testes</button><button id="copy" disabled>Copiar resultado</button>
+</p>
+<div class="wrap"><table>
+  <thead><tr><th>Teste</th><th>Resultado</th><th>HTTP</th><th>ms</th><th>Detalhe</th><th>URL</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table></div>
+<textarea id="out" readonly placeholder="O resultado em JSON aparece aqui."></textarea>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const results = [];
+
+async function probe(name, url, summarize, init) {
+  const row = { name, url, origin: location.origin };
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(15000) });
+    row.ms = Math.round(performance.now() - t0);
+    row.status = res.status;
+    row.cors = 'ok';
+    row.headers = Object.fromEntries(
+      [...res.headers].filter(([k]) => /rate|retry|cache-control|content-type|access-control/i.test(k)),
+    );
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = null; }
+    row.detail = body ? summarize(body) : text.slice(0, 120);
+    row.body = body;
+  } catch (e) {
+    row.ms = Math.round(performance.now() - t0);
+    row.cors = 'bloqueado';
+    row.detail = String(e && e.message || e);
+  }
+  results.push(row);
+  const tr = document.createElement('tr');
+  const ok = row.cors === 'ok' && row.status >= 200 && row.status < 300;
+  for (const [v, cls] of [[name], [ok ? 'ok' : row.cors === 'ok' ? 'HTTP ' + row.status : 'bloqueado', ok ? 'ok' : 'bad'],
+      [row.status ?? '—'], [row.ms], [typeof row.detail === 'string' ? row.detail : JSON.stringify(row.detail)], [url, 'url']]) {
+    const td = document.createElement('td'); td.textContent = v; if (cls) td.className = cls; tr.append(td);
+  }
+  $('rows').append(tr);
+  return row;
+}
+
+const acSummary = (b) => {
+  const list = b.ac || b.aircraft || [];
+  const s = list[0] || {};
+  return { aeronaves: list.length, now: b.now, chaves: Object.keys(b).join(','), exemplo: { hex: s.hex, flight: s.flight, alt_baro: s.alt_baro, gs: s.gs, track: s.track, r: s.r, t: s.t } };
+};
+
+async function burst(name, url, n = 5) {
+  const statuses = await Promise.all(Array.from({ length: n }, () =>
+    fetch(url, { cache: 'no-store' }).then((r) => r.status).catch(() => 'erro')));
+  const row = { name: `${name}: ${n} pedidos simultâneos`, url, statuses };
+  results.push(row);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td></td><td></td><td></td><td></td><td></td><td class="url"></td>`;
+  const tds = tr.children;
+  tds[0].textContent = row.name;
+  const bad = statuses.filter((s) => s !== 200).length;
+  tds[1].textContent = bad ? `${bad} recusados` : 'todos ok';
+  tds[1].className = bad ? 'bad' : 'ok';
+  tds[4].textContent = statuses.join(', ');
+  tds[5].textContent = url;
+  $('rows').append(tr);
+}
+
+/**
+ * Extrai lat/lon de: "lat, lon", ?lat=&lon=, links longos do Google Maps
+ * (@lat,lon · !3dlat!4dlon · ?q=lat,lon · ll=lat,lon). Links curtos (maps.app.goo.gl)
+ * não dá para expandir no navegador (CORS): abra-o e copie o link longo.
+ */
+function parseLocation(text) {
+  const t = decodeURIComponent(String(text).trim());
+  const pats = [/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/, /@(-?\d+\.?\d*),(-?\d+\.?\d*)/,
+    /[?&](?:q|ll|query|destination)=(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/, /^(-?\d+\.?\d*)\s*[,;\s]\s*(-?\d+\.?\d*)$/];
+  for (const re of pats) {
+    const m = t.match(re);
+    if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) return { lat: +m[1], lon: +m[2] };
+  }
+  return null;
+}
+function setLocation(loc) { $('lat').value = loc.lat.toFixed(4); $('lon').value = loc.lon.toFixed(4); }
+
+$('paste').oninput = () => {
+  const loc = parseLocation($('paste').value);
+  $('paste').style.outline = loc ? '2px solid var(--ok)' : $('paste').value ? '2px solid var(--bad)' : '';
+  if (loc) setLocation(loc);
+  else if (/goo\.gl|maps\.app/.test($('paste').value))
+    $('paste').title = 'Link curto: abra-o no navegador e cole aqui o link longo da barra de endereço.';
+};
+$('geo').onclick = () => navigator.geolocation.getCurrentPosition(
+  (p) => setLocation({ lat: p.coords.latitude, lon: p.coords.longitude }),
+  (e) => alert('Localização indisponível: ' + e.message), { timeout: 10000 });
+{
+  const qs = new URLSearchParams(location.search);
+  const loc = parseLocation(qs.get('loc') ?? `${qs.get('lat')},${qs.get('lon')}`);
+  if (loc) setLocation(loc);
+  if (qs.get('dist')) $('dist').value = qs.get('dist');
+}
+
+$('run').onclick = async () => {
+  $('run').disabled = true; $('rows').replaceChildren(); results.length = 0;
+  const lat = +$('lat').value, lon = +$('lon').value, dist = +$('dist').value;
+
+  const live = {
+    'adsb.lol': `https://api.adsb.lol/v2/lat/${lat}/lon/${lon}/dist/${dist}`,
+    'adsb.fi': `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lon}/dist/${dist}`,
+    'airplanes.live': `https://api.airplanes.live/v2/point/${lat}/${lon}/${dist}`,
+  };
+  let sample;
+  for (const [n, u] of Object.entries(live)) {
+    const r = await probe(`telemetria ${n}`, u, acSummary);
+    const list = r.body && (r.body.ac || r.body.aircraft);
+    if (!sample && list) sample = list.find((a) => a.flight && a.flight.trim() && a.hex && !a.hex.startsWith('~'));
+  }
+  const cs = sample ? sample.flight.trim() : 'TAM3301';
+  const hex = sample ? sample.hex : 'e48a12';
+
+  await probe(`callsign adsb.lol (${cs})`, `https://api.adsb.lol/v2/callsign/${cs}`, acSummary);
+  await probe(`rota adsbdb (${cs})`, `https://api.adsbdb.com/v0/callsign/${cs}`,
+    (b) => { const r = b.response?.flightroute; return r ? `${r.origin?.icao_code} ${r.origin?.name} → ${r.destination?.icao_code} ${r.destination?.name}` : b.response; });
+  await probe(`rota adsb.lol routeset (${cs})`, 'https://api.adsb.lol/api/0/routeset',
+    (b) => JSON.stringify(b).slice(0, 200),
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planes: [{ callsign: cs, lat: sample?.lat ?? lat, lng: sample?.lon ?? lon }] }) });
+  await probe(`rota OpenSky anônima (${cs})`, `https://opensky-network.org/api/routes?callsign=${cs}`, (b) => JSON.stringify(b).slice(0, 200));
+  await probe(`aeronave adsbdb (${hex})`, `https://api.adsbdb.com/v0/aircraft/${hex}`,
+    (b) => { const a = b.response?.aircraft; return a ? `${a.registration} · ${a.type} · ${a.registered_owner} · foto: ${a.url_photo ? 'sim' : 'não'}` : b.response; });
+  await probe(`foto planespotters (${hex})`, `https://api.planespotters.net/pub/photos/hex/${hex}`,
+    (b) => `${(b.photos || []).length} fotos`);
+  await probe('OurAirports CSV', 'https://davidmegginson.github.io/ourairports-data/airports.csv', () => 'n/a');
+  await probe('tiles OpenFreeMap (style dark)', 'https://tiles.openfreemap.org/styles/dark', (b) => `style "${b.name}"`);
+
+  for (const [n, u] of Object.entries(live)) await burst(n, u);
+
+  for (const r of results) delete r.body;
+  $('out').value = JSON.stringify({ quando: new Date().toISOString(), userAgent: navigator.userAgent, results }, null, 2);
+  $('copy').disabled = false; $('run').disabled = false;
+};
+$('copy').onclick = () => navigator.clipboard.writeText($('out').value).then(() => ($('copy').textContent = 'Copiado ✓'));
+</script>
+</body>
+</html>

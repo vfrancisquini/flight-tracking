@@ -1,0 +1,25 @@
+{
+  "name": "radar-voos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Radar de voos em tempo real com dados abertos (uso pessoal, não comercial)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "cf:dev": "npm run build && npx wrangler@3 pages dev dist",
+    "cf:deploy": "npm run build && npx wrangler@3 pages deploy dist",
+    "airports": "node scripts/build-airports.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.24.0"
+  },
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
+  }
+}

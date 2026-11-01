@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radar de Voos</title>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="status">Carregando…</div>
+    <a id="probe-link" href="probe.html">Testar APIs</a>
+    <aside id="panel" hidden aria-live="polite">
+      <header>
+        <h2></h2>
+        <button class="close" type="button" aria-label="Fechar">×</button>
+      </header>
+      <dl></dl>
+    </aside>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
