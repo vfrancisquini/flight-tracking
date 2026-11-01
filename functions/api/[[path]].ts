@@ -95,7 +95,7 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
     return out;
   } catch (e) {
     console.error(e);
-    return json({ error: 'upstream_unavailable' }, 502);
+    return json({ error: 'upstream_unavailable', detail: e instanceof Error ? e.message : String(e) }, 502);
   }
 }
 
