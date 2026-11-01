@@ -14,13 +14,30 @@ export interface LiveResult {
   provider: string;
 }
 
-/** null quando a fonte não conhece a rota; lança erro em falha passageira. */
+const ROUTE_CACHE_MS = 24 * 3600_000;
+
+/**
+ * null quando a fonte não conhece a rota; lança erro em falha passageira.
+ * Direto do navegador (o adsbdb tem CORS): pelo Worker, o IP partilhado da
+ * Cloudflare recebe 429. Guarda no navegador para não repetir pedidos ao recarregar.
+ */
 export async function fetchRoute(callsign: string): Promise<Route | null> {
-  const url = DATA_MODE === 'proxy' ? `/api/route/${callsign}` : ENRICH.route(callsign);
-  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseRoute(await res.json());
+  const key = `route:${callsign}`;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as { at: number; route: Route | null } | null;
+    if (saved && Date.now() - saved.at < ROUTE_CACHE_MS) return saved.route;
+  } catch {
+    // Sem armazenamento disponível: segue para a rede.
+  }
+  const res = await fetch(ENRICH.route(callsign), { signal: AbortSignal.timeout(15000) });
+  if (res.status !== 404 && !res.ok) throw new Error(`HTTP ${res.status}`);
+  const route = res.ok ? parseRoute(await res.json()) : null;
+  try {
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), route }));
+  } catch {
+    // Armazenamento cheio ou bloqueado: a rota continua em memória.
+  }
+  return route;
 }
 
 /** Localização aproximada pelo IP, calculada pelo Worker. null se não houver. */

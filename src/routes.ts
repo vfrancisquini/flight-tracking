@@ -28,7 +28,7 @@ export function parseRoute(raw: unknown): Route | null {
 }
 
 const CONCURRENCY = 3;
-const RETRY_MS = 5 * 60_000;
+const RETRY_MS = 60_000;
 /** Pausa da fila depois de uma falha, para não insistir numa API gratuita que limitou pedidos. */
 const PAUSE_MS = 30_000;
 
