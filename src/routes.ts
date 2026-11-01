@@ -49,7 +49,7 @@ export function parseHexdbRoute(raw: unknown): { origin: string; destination: st
 export function parseHexdbAirport(raw: unknown): Airport | null {
   const a = raw as { iata?: string; icao?: string; airport?: string; region_name?: string; latitude?: number; longitude?: number } | null;
   if (!a || !Number.isFinite(a.latitude) || !Number.isFinite(a.longitude)) return null;
-  return { iata: a.iata ?? null, icao: a.icao ?? null, city: a.region_name ?? a.airport ?? null, lat: a.latitude!, lon: a.longitude! };
+  return { iata: a.iata ?? null, icao: a.icao ?? null, city: a.airport ?? a.region_name ?? null, lat: a.latitude!, lon: a.longitude! };
 }
 
 export interface Progress {

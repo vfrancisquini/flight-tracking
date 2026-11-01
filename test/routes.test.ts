@@ -47,7 +47,7 @@ describe('hexdb', () => {
     expect(parseHexdbRoute({ route: 'GCTS-LFLL' })).toEqual({ origin: 'GCTS', destination: 'LFLL' });
     expect(parseHexdbRoute({ route: 'AAAA-BBBB-CCCC' })).toEqual({ origin: 'AAAA', destination: 'CCCC' });
     expect(parseHexdbRoute(null)).toBeNull();
-    expect(parseHexdbAirport({ iata: 'LIS', icao: 'LPPT', region_name: 'Lisboa', latitude: 38.78, longitude: -9.14 })?.city).toBe('Lisboa');
+    expect(parseHexdbAirport({ iata: 'LIS', icao: 'LPPT', airport: 'Lisbon Portela Airport', region_name: 'Lisboa', latitude: 38.78, longitude: -9.14 })?.city).toBe('Lisbon Portela Airport');
   });
 });
 
