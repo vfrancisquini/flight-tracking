@@ -22,6 +22,10 @@
 <p>Cada pedido é feito <b>diretamente deste navegador</b>. Se der <span class="bad">bloqueado</span>, é CORS
 (ou rede): essa fonte só funciona através do Worker. Depois de terminar, clique em <b>Copiar resultado</b> e cole na conversa.</p>
 <p>
+  <label>Link do Google Maps ou "lat, lon": <input id="paste" size="40" placeholder="https://www.google.com/maps/@-23.43,-46.47,12z"></label>
+  <button id="geo" type="button">Usar minha localização</button>
+</p>
+<p>
   <label>Centro: <input id="lat" value="-23.43" size="7"> <input id="lon" value="-46.47" size="7"></label>
   <label>Raio (NM): <input id="dist" value="50" size="4"></label>
   <button id="run">Executar testes</button><button id="copy" disabled>Copiar resultado</button>
@@ -87,6 +91,40 @@ async function burst(name, url, n = 5) {
   tds[4].textContent = statuses.join(', ');
   tds[5].textContent = url;
   $('rows').append(tr);
+}
+
+/**
+ * Extrai lat/lon de: "lat, lon", ?lat=&lon=, links longos do Google Maps
+ * (@lat,lon · !3dlat!4dlon · ?q=lat,lon · ll=lat,lon). Links curtos (maps.app.goo.gl)
+ * não dá para expandir no navegador (CORS): abra-o e copie o link longo.
+ */
+function parseLocation(text) {
+  const t = decodeURIComponent(String(text).trim());
+  const pats = [/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/, /@(-?\d+\.?\d*),(-?\d+\.?\d*)/,
+    /[?&](?:q|ll|query|destination)=(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/, /^(-?\d+\.?\d*)\s*[,;\s]\s*(-?\d+\.?\d*)$/];
+  for (const re of pats) {
+    const m = t.match(re);
+    if (m && Math.abs(+m[1]) <= 90 && Math.abs(+m[2]) <= 180) return { lat: +m[1], lon: +m[2] };
+  }
+  return null;
+}
+function setLocation(loc) { $('lat').value = loc.lat.toFixed(4); $('lon').value = loc.lon.toFixed(4); }
+
+$('paste').oninput = () => {
+  const loc = parseLocation($('paste').value);
+  $('paste').style.outline = loc ? '2px solid var(--ok)' : $('paste').value ? '2px solid var(--bad)' : '';
+  if (loc) setLocation(loc);
+  else if (/goo\.gl|maps\.app/.test($('paste').value))
+    $('paste').title = 'Link curto: abra-o no navegador e cole aqui o link longo da barra de endereço.';
+};
+$('geo').onclick = () => navigator.geolocation.getCurrentPosition(
+  (p) => setLocation({ lat: p.coords.latitude, lon: p.coords.longitude }),
+  (e) => alert('Localização indisponível: ' + e.message), { timeout: 10000 });
+{
+  const qs = new URLSearchParams(location.search);
+  const loc = parseLocation(qs.get('loc') ?? `${qs.get('lat')},${qs.get('lon')}`);
+  if (loc) setLocation(loc);
+  if (qs.get('dist')) $('dist').value = qs.get('dist');
 }
 
 $('run').onclick = async () => {
