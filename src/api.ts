@@ -21,7 +21,10 @@ export async function fetchLive(q: LiveQuery): Promise<LiveResult> {
     if (!res.ok) throw new Error(`Worker respondeu HTTP ${res.status}`);
     return { aircraft: normalizeReadsb(await res.json(), receivedAt), provider: res.headers.get('x-provider') ?? '?' };
   }
-  const { res, index } = await fetchFirstOk(TELEMETRY_PROVIDERS.map((p) => p.live(q)));
+  const { res, index } = await fetchFirstOk(TELEMETRY_PROVIDERS.map((p) => p.live(q))).catch((e: unknown) => {
+    // Em modo direto, "Failed to fetch" quase sempre significa CORS bloqueado.
+    throw new Error(`nenhuma fonte respondeu ao navegador (CORS ou rede): ${e instanceof Error ? e.message.split('\n')[1] ?? '' : ''}`);
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return { aircraft: normalizeReadsb(await res.json(), receivedAt), provider: TELEMETRY_PROVIDERS[index]?.name ?? '?' };
 }

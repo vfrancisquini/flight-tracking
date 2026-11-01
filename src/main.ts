@@ -111,6 +111,13 @@ function renderPanel(hex: string | null): void {
 
 panel.querySelector('button.close')!.addEventListener('click', () => layer.select(null));
 
+// Se o mapa base não carregar, dizer porquê em vez de ficar em "Carregando…".
+map.on('error', (e) => {
+  if (map.loaded()) return;
+  statusEl.classList.add('warn');
+  statusEl.textContent = `⚠ Não foi possível carregar o mapa base: ${e.error?.message ?? 'erro de rede'}`;
+});
+
 map.on('load', () => {
   layer = new AircraftLayer(map, store, renderPanel);
   const poller = new Poller(refresh, POLL_MS);

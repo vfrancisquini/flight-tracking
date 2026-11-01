@@ -35,3 +35,10 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 @media (max-width: 640px) {
   #panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 50%; border-radius: 12px 12px 0 0; }
 }
+
+#probe-link {
+  position: fixed; top: 12px; right: 12px; z-index: 2; padding: 6px 12px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-size: 13px; text-decoration: none;
+}
+#probe-link:hover, #probe-link:focus-visible { color: var(--text); }
+@media (max-width: 640px) { #probe-link { top: auto; bottom: 12px; right: auto; left: 12px; } }
