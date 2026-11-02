@@ -103,14 +103,6 @@ const fmtClock = (at: number | null) =>
 const fmtTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
 
-/** "prevista 18:10 · real 18:22": só o que a fonte tiver. */
-function fmtOfficial(scheduled: string | null, estimated: string | null, actual: string | null, actualLabel: string): string {
-  const parts = [scheduled && `prevista ${fmtTime(scheduled)}`];
-  if (actual) parts.push(`${actualLabel} ${fmtTime(actual)}`);
-  else if (estimated && estimated !== scheduled) parts.push(`estimada ${fmtTime(estimated)}`);
-  return parts.filter(Boolean).join(' · ') || '—';
-}
-
 function fmtDelay(seconds: number | null): string | null {
   if (seconds === null || Math.abs(seconds) < 60) return null;
   return `${Math.round(Math.abs(seconds) / 60)} min ${seconds > 0 ? 'de atraso' : 'adiantado'}`;
@@ -122,10 +114,11 @@ const fmtGate = (terminal: string | null, gate: string | null) =>
 function officialRows(f: OfficialFlight): [string, string][] {
   const rows: [string, string | null][] = [
     ['Status', f.cancelled ? 'Cancelado' : f.diverted ? 'Desviado' : f.status],
-    ['Partida', fmtOfficial(f.scheduledOut, f.estimatedOut, f.actualOut, 'real')],
+    ['Decolagem programada', fmtTime(f.scheduledOff) ?? '—'],
+    ['Decolagem estimada', fmtTime(f.estimatedOff) ?? '—'],
     ['Atraso na partida', fmtDelay(f.departureDelay)],
     ['Embarque', fmtGate(f.terminalOrigin, f.gateOrigin)],
-    ['Chegada', fmtOfficial(f.scheduledIn, f.estimatedIn, f.actualIn, 'real')],
+    ['Pouso programado', fmtTime(f.scheduledOn) ?? '—'],
     ['Atraso na chegada', fmtDelay(f.arrivalDelay)],
     ['Desembarque', fmtGate(f.terminalDestination, f.gateDestination)],
     ['Bagagem', f.baggageClaim],
@@ -135,11 +128,25 @@ function officialRows(f: OfficialFlight): [string, string][] {
 
 const fmtOfficialAirport = (ap: FlightAirport) => [ap.city, ap.iata ?? ap.icao].filter(Boolean).join(' · ') || '—';
 
+/** Nome oficial, ICAO e fuso do aeroporto: só o que a fonte tiver. */
+function airportRows(label: string, ap: FlightAirport): [string, string][] {
+  const name = [ap.name, ap.icao].filter(Boolean).join(' · ');
+  const rows: [string, string][] = [];
+  if (name) rows.push([`Aeroporto de ${label}`, name]);
+  if (ap.timezone) rows.push([`Fuso de ${label}`, ap.timezone]);
+  return rows;
+}
+
 function routeRows(a: Aircraft, route: Route | null | undefined, official: OfficialFlight | null | undefined): [string, string][] {
   if (!a.callsign) return [['Rota', 'indisponível']];
   const rows: [string, string][] = [];
   if (official?.origin && official.destination) {
-    rows.push(['Origem', fmtOfficialAirport(official.origin)], ['Destino', fmtOfficialAirport(official.destination)]);
+    rows.push(
+      ['Origem', fmtOfficialAirport(official.origin)],
+      ...airportRows('origem', official.origin),
+      ['Destino', fmtOfficialAirport(official.destination)],
+      ...airportRows('destino', official.destination),
+    );
   } else if (route) {
     rows.push(['Origem', fmtAirport(route.origin)], ['Destino', fmtAirport(route.destination)]);
   } else if (route === undefined) {
@@ -239,7 +246,7 @@ function renderPanel(hex: string | null): void {
 
   const rowsRoute = routeRows(a, route, official);
   const note = panel.querySelector<HTMLElement>('.note')!;
-  note.hidden = !rowsRoute.some(([k]) => k.startsWith('Partida'));
+  note.hidden = !rowsRoute.some(([k]) => k.startsWith('Partida') || k.startsWith('Decolagem'));
   note.textContent = official
     ? 'Horários oficiais da FlightAware, na hora do seu dispositivo.'
     : 'Horários estimados pela distância e velocidade atuais; não são os horários oficiais do voo.';

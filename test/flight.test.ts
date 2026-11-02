@@ -28,16 +28,16 @@ describe('parseOfficialFlight', () => {
       {
         flights: [{
           status: 'En Route / On Time', cancelled: false, departure_delay: 720, gate_origin: '12',
-          origin: { code_iata: 'BER', code_icao: 'EDDB', city: 'Berlin' }, destination: null,
-          scheduled_out: '2026-11-02T10:00:00Z', actual_off: '2026-11-02T10:20:00Z', estimated_on: '2026-11-02T13:00:00Z',
+          origin: { code_iata: 'BER', code_icao: 'EDDB', city: 'Berlin', name: 'Brandenburg', timezone: 'Europe/Berlin' }, destination: null,
+          scheduled_off: '2026-11-02T10:10:00Z', estimated_off: '2026-11-02T10:20:00Z', scheduled_on: '2026-11-02T13:00:00Z',
         }],
       },
       now,
     );
     expect(f).toMatchObject({
       status: 'En Route / On Time', departureDelay: 720, gateOrigin: '12', destination: null,
-      origin: { iata: 'BER', icao: 'EDDB', city: 'Berlin' },
-      actualOut: '2026-11-02T10:20:00Z', estimatedIn: '2026-11-02T13:00:00Z', actualIn: null,
+      origin: { iata: 'BER', icao: 'EDDB', city: 'Berlin', name: 'Brandenburg', timezone: 'Europe/Berlin' },
+      scheduledOff: '2026-11-02T10:10:00Z', estimatedOff: '2026-11-02T10:20:00Z', scheduledOn: '2026-11-02T13:00:00Z',
     });
   });
 

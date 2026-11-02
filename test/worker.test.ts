@@ -80,7 +80,7 @@ describe('Worker /api', () => {
       const data = new Map(Object.entries(initial));
       return { data, get: async (k: string) => data.get(k) ?? null, put: async (k: string, v: string) => void data.set(k, v) };
     };
-    const body = JSON.stringify({ flights: [{ ident: 'TAP1', status: 'En Route', actual_off: '2026-11-02T10:00:00Z', scheduled_out: '2026-11-02T09:50:00Z' }] });
+    const body = JSON.stringify({ flights: [{ ident: 'TAP1', status: 'En Route', actual_off: '2026-11-02T10:00:00Z', scheduled_off: '2026-11-02T09:50:00Z' }] });
     const month = () => `month:${new Date().toISOString().slice(0, 7)}`;
     const flightCtx = (env: object, init?: RequestInit) => {
       const c = ctx('flight/tap1');
@@ -91,7 +91,7 @@ describe('Worker /api', () => {
       const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(body));
       const budget = kv();
       const res = await onRequestGet(flightCtx({ flightaware_key: 'k', AEROAPI_BUDGET: budget }));
-      expect(await res.json()).toMatchObject({ status: 'En Route', actualOut: '2026-11-02T10:00:00Z' });
+      expect(await res.json()).toMatchObject({ status: 'En Route', scheduledOff: '2026-11-02T09:50:00Z' });
       const [url, init] = spy.mock.calls[0]!;
       expect(String(url)).toContain('/flights/TAP1?');
       expect((init?.headers as Record<string, string>)['x-apikey']).toBe('k');
