@@ -75,6 +75,42 @@ describe('Worker /api', () => {
     expect((await onRequestGet(ctx('geo'))).status).toBe(404);
   });
 
+  describe('/flight (paga)', () => {
+    const kv = (initial: Record<string, string> = {}) => {
+      const data = new Map(Object.entries(initial));
+      return { data, get: async (k: string) => data.get(k) ?? null, put: async (k: string, v: string) => void data.set(k, v) };
+    };
+    const body = JSON.stringify({ flights: [{ ident: 'TAP1', status: 'En Route', actual_off: '2026-11-02T10:00:00Z', scheduled_out: '2026-11-02T09:50:00Z' }] });
+    const month = () => `month:${new Date().toISOString().slice(0, 7)}`;
+    const flightCtx = (env: object, init?: RequestInit) => {
+      const c = ctx('flight/tap1');
+      return { ...c, env, request: new Request(c.request, init) };
+    };
+
+    it('consulta com a chave, resume, conta no orçamento e usa o cache', async () => {
+      const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(body));
+      const budget = kv();
+      const res = await onRequestGet(flightCtx({ flightaware_key: 'k', AEROAPI_BUDGET: budget }));
+      expect(await res.json()).toMatchObject({ status: 'En Route', actualOut: '2026-11-02T10:00:00Z' });
+      const [url, init] = spy.mock.calls[0]!;
+      expect(String(url)).toContain('/flights/TAP1?');
+      expect((init?.headers as Record<string, string>)['x-apikey']).toBe('k');
+      await onRequestGet(flightCtx({ flightaware_key: 'k', AEROAPI_BUDGET: budget }));
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(budget.data.get(month())).toBe('1');
+    });
+
+    it('não gasta no teto, sem contador, sem chave nem vindo de outro site', async () => {
+      const spy = vi.spyOn(globalThis, 'fetch');
+      expect((await onRequestGet(flightCtx({ flightaware_key: 'k', AEROAPI_BUDGET: kv({ [month()]: '800' }) }))).status).toBe(429);
+      expect((await onRequestGet(flightCtx({ flightaware_key: 'k' }))).status).toBe(429);
+      expect((await onRequestGet(flightCtx({ AEROAPI_BUDGET: kv() }))).status).toBe(503);
+      const foreign = flightCtx({ flightaware_key: 'k', AEROAPI_BUDGET: kv() }, { headers: { 'sec-fetch-site': 'cross-site' } });
+      expect((await onRequestGet(foreign)).status).toBe(403);
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
   it('devolve 502 quando todas as fontes falham', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network'));
     expect((await onRequestGet(ctx('callsign/TAM3301'))).status).toBe(502);

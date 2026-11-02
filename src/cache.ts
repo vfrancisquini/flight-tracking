@@ -14,10 +14,12 @@ export interface CacheKind {
 const DAY_MS = 24 * 3600_000;
 export const ROUTE_CACHE: CacheKind = { prefix: 'route2:', ttlMs: DAY_MS };
 export const AIRCRAFT_CACHE: CacheKind = { prefix: 'aircraft1:', ttlMs: 7 * DAY_MS };
-const KINDS = [ROUTE_CACHE, AIRCRAFT_CACHE];
+/** Dados pagos e que mudam durante o voo. */
+export const FLIGHT_CACHE: CacheKind = { prefix: 'flight1:', ttlMs: 15 * 60_000 };
+const KINDS = [ROUTE_CACHE, AIRCRAFT_CACHE, FLIGHT_CACHE];
 
 /** Chaves deste cache, em qualquer versão (route1:, aircraft0:…). */
-const OURS = /^(route|aircraft)\d+:/;
+const OURS = /^(route|aircraft|flight)\d+:/;
 /** Acima disto removemos as mais antigas. */
 export const MAX_ENTRIES = 3000;
 

@@ -1,3 +1,8 @@
 name = "radar-voos"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-10-01"
+
+# Contador do teto de gastos da AeroAPI (a chave é o secret flightaware_key, no painel).
+[[kv_namespaces]]
+binding = "AEROAPI_BUDGET"
+id = "073a6c60d71a417f8b24a680883503ea"

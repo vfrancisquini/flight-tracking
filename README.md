@@ -36,8 +36,16 @@ por isso o navegador as chama diretamente, cada visitante com o seu próprio lim
 | `GET /api/callsign/:cs` | Procura um voo pelo callsign, no mundo todo (para a busca) | 10 s |
 | `GET /api/hex/:hex` | Procura uma aeronave pelo código ICAO 24-bit (para a busca) | 10 s |
 | `GET /api/geo` | Localização aproximada do visitante, pelo IP (dado da Cloudflare) | nunca |
+| `GET /api/flight/:cs` | Horários, status e portões oficiais (FlightAware AeroAPI), só ao abrir um voo | 15 min |
 
 Só monta URLs a partir de parâmetros validados: não é um proxy aberto.
+
+### Custo da AeroAPI
+
+É a única fonte paga: cerca de US$ 0,005 por consulta, cobertos pelo crédito mensal de US$ 5 da conta Personal.
+O site é público, por isso o Worker conta as consultas no KV `AEROAPI_BUDGET` e para em **800 por mês e 60 por dia**
+(`AEROAPI_MONTH_CAP`, `AEROAPI_DAY_CAP`). Sem contador ou sem o secret `flightaware_key` não consulta, e o painel
+volta aos horários estimados. O contador pode falhar por alguns pedidos simultâneos; o teto deixa margem para isso.
 
 ### Código
 

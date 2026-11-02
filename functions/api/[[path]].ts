@@ -12,7 +12,9 @@
  *   GET /api/callsign/:cs            procurar voo pelo callsign (global)
  *   GET /api/hex/:hex                procurar aeronave pelo ICAO 24-bit
  *   GET /api/geo                     localização aproximada do visitante, pelo IP (dados da Cloudflare)
+ *   GET /api/flight/:cs              horários, status e portões oficiais (FlightAware, paga: tem teto)
  */
+import { parseOfficialFlight } from '../../src/shared/flight';
 import {
   CALLSIGN_RE,
   fetchFirstOk,
@@ -25,13 +27,22 @@ interface Ctx {
   request: Request & { cf?: { latitude?: string; longitude?: string } };
   params: { path?: string | string[] };
   waitUntil(p: Promise<unknown>): void;
+  env?: { flightaware_key?: string; AEROAPI_BUDGET?: BudgetStore };
+}
+
+interface BudgetStore {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
 const USER_AGENT = 'radar-voos/0.1 (projeto pessoal, nao comercial)';
 
 /** Segundos de cache na edge por tipo. */
-const TTL = { live: 5, lookup: 10 } as const;
+const TTL = { live: 5, lookup: 10, flight: 900 } as const;
 const STALE_TTL = 120;
+/** A US$ 0,005 por consulta: 800 = US$ 4, abaixo do crédito mensal de US$ 5 da FlightAware. */
+const AEROAPI_MONTH_CAP = 800;
+const AEROAPI_DAY_CAP = 60;
 
 interface Plan {
   urls: string[];
@@ -66,6 +77,7 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
   const url = new URL(ctx.request.url);
   const segs = Array.isArray(ctx.params.path) ? ctx.params.path : [ctx.params.path ?? ''];
   if (segs[0] === 'geo') return geo(ctx.request);
+  if (segs[0] === 'flight') return flight(ctx, url, (segs[1] ?? '').toUpperCase());
   const p = plan(segs[0], segs[1], url.searchParams);
   if (p instanceof Response) return p;
 
@@ -106,6 +118,62 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
       return new Response(stale.body, { headers });
     }
     return json({ error: 'upstream_unavailable', detail: e instanceof Error ? e.message : String(e) }, 502);
+  }
+}
+
+/** Reserva uma consulta no orçamento. Sem contador disponível não gasta: falha fechada. */
+async function reserveBudget(store: BudgetStore | undefined, now: Date): Promise<boolean> {
+  if (!store) return false;
+  const month = `month:${now.toISOString().slice(0, 7)}`;
+  const day = `day:${now.toISOString().slice(0, 10)}`;
+  try {
+    const [usedMonth, usedDay] = await Promise.all([store.get(month), store.get(day)]);
+    const m = Number(usedMonth ?? 0);
+    const d = Number(usedDay ?? 0);
+    if (m >= AEROAPI_MONTH_CAP || d >= AEROAPI_DAY_CAP) return false;
+    await Promise.all([
+      store.put(month, String(m + 1), { expirationTtl: 40 * 86_400 }),
+      store.put(day, String(d + 1), { expirationTtl: 2 * 86_400 }),
+    ]);
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
+async function flight(ctx: Ctx, url: URL, cs: string): Promise<Response> {
+  if (!CALLSIGN_RE.test(cs)) return bad('callsign inválido');
+  // Cada consulta custa dinheiro: só para o próprio site. O teto cobre quem falsificar este cabeçalho.
+  const site = ctx.request.headers.get('sec-fetch-site');
+  if (site && site !== 'same-origin') return json({ error: 'forbidden' }, 403);
+  const apiKey = ctx.env?.flightaware_key;
+  if (!apiKey) return json({ error: 'not_configured' }, 503);
+
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(`${url.origin}/__flight/${cs}`, { method: 'GET' });
+  const hit = await cache.match(key);
+  if (hit) return hit;
+
+  if (!(await reserveBudget(ctx.env?.AEROAPI_BUDGET, new Date()))) return json({ error: 'budget_exhausted' }, 429);
+  try {
+    const res = await fetch(`https://aeroapi.flightaware.com/aeroapi/flights/${cs}?ident_type=designator&max_pages=1`, {
+      headers: { 'x-apikey': apiKey, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status !== 404 && !res.ok) {
+      console.error(`AeroAPI HTTP ${res.status}`);
+      return json({ error: 'upstream_unavailable', status: res.status }, 502);
+    }
+    const parsed = res.ok ? parseOfficialFlight(await res.json(), Date.now()) : null;
+    const out = new Response(JSON.stringify(parsed), {
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': `public, max-age=${TTL.flight}` },
+    });
+    ctx.waitUntil(cache.put(key, out.clone()));
+    return out;
+  } catch (e) {
+    console.error(e);
+    return json({ error: 'upstream_unavailable' }, 502);
   }
 }
 

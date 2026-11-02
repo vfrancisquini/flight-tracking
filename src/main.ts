@@ -1,7 +1,8 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { DATA_MODE, fetchAircraftInfo, fetchLive, fetchRoute, type AircraftInfo } from './api';
+import { DATA_MODE, fetchAircraftInfo, fetchLive, fetchOfficialFlight, fetchRoute, type AircraftInfo } from './api';
+import type { FlightAirport, OfficialFlight } from './shared/flight';
 import { pruneCache } from './cache';
 import { fmtAge, fmtAltitude, fmtHeading, fmtSpeed, fmtVRate } from './format';
 import { routeFitsPosition, viewportToQuery } from './geo';
@@ -43,7 +44,8 @@ const map = new maplibregl.Map({
     customAttribution:
       'Voos: <a href="https://adsb.lol" target="_blank" rel="noopener">adsb.lol</a> (ODbL) · ' +
       'Rotas: <a href="https://www.adsbdb.com" target="_blank" rel="noopener">adsbdb</a> · ' +
-      '<a href="https://hexdb.io" target="_blank" rel="noopener">hexdb</a>',
+      '<a href="https://hexdb.io" target="_blank" rel="noopener">hexdb</a> · ' +
+      'Horários: <a href="https://www.flightaware.com" target="_blank" rel="noopener">FlightAware</a>',
   },
 });
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'bottom-right');
@@ -98,22 +100,77 @@ const fmtAirport = (ap: Airport) => [ap.city, ap.iata ?? ap.icao].filter(Boolean
 const fmtClock = (at: number | null) =>
   at === null ? '—' : `≈ ${new Date(at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 
-function routeRows(a: Aircraft, route: Route | null | undefined): [string, string][] {
+const fmtTime = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+
+/** "prevista 18:10 · real 18:22": só o que a fonte tiver. */
+function fmtOfficial(scheduled: string | null, estimated: string | null, actual: string | null, actualLabel: string): string {
+  const parts = [scheduled && `prevista ${fmtTime(scheduled)}`];
+  if (actual) parts.push(`${actualLabel} ${fmtTime(actual)}`);
+  else if (estimated && estimated !== scheduled) parts.push(`estimada ${fmtTime(estimated)}`);
+  return parts.filter(Boolean).join(' · ') || '—';
+}
+
+function fmtDelay(seconds: number | null): string | null {
+  if (seconds === null || Math.abs(seconds) < 60) return null;
+  return `${Math.round(Math.abs(seconds) / 60)} min ${seconds > 0 ? 'de atraso' : 'adiantado'}`;
+}
+
+const fmtGate = (terminal: string | null, gate: string | null) =>
+  [terminal && `terminal ${terminal}`, gate && `portão ${gate}`].filter(Boolean).join(' · ') || null;
+
+function officialRows(f: OfficialFlight): [string, string][] {
+  const rows: [string, string | null][] = [
+    ['Status', f.cancelled ? 'Cancelado' : f.diverted ? 'Desviado' : f.status],
+    ['Partida', fmtOfficial(f.scheduledOut, f.estimatedOut, f.actualOut, 'real')],
+    ['Atraso na partida', fmtDelay(f.departureDelay)],
+    ['Embarque', fmtGate(f.terminalOrigin, f.gateOrigin)],
+    ['Chegada', fmtOfficial(f.scheduledIn, f.estimatedIn, f.actualIn, 'real')],
+    ['Atraso na chegada', fmtDelay(f.arrivalDelay)],
+    ['Desembarque', fmtGate(f.terminalDestination, f.gateDestination)],
+    ['Bagagem', f.baggageClaim],
+  ];
+  return rows.filter((r): r is [string, string] => r[1] !== null);
+}
+
+const fmtOfficialAirport = (ap: FlightAirport) => [ap.city, ap.iata ?? ap.icao].filter(Boolean).join(' · ') || '—';
+
+function routeRows(a: Aircraft, route: Route | null | undefined, official: OfficialFlight | null | undefined): [string, string][] {
   if (!a.callsign) return [['Rota', 'indisponível']];
-  if (route === undefined) return [['Rota', routes.failed(a.callsign) ? 'indisponível' : 'buscando…']];
-  if (route === null) return [['Rota', 'desconhecida']];
-  const rows: [string, string][] = [['Origem', fmtAirport(route.origin)], ['Destino', fmtAirport(route.destination)]];
+  const rows: [string, string][] = [];
+  if (official?.origin && official.destination) {
+    rows.push(['Origem', fmtOfficialAirport(official.origin)], ['Destino', fmtOfficialAirport(official.destination)]);
+  } else if (route) {
+    rows.push(['Origem', fmtAirport(route.origin)], ['Destino', fmtAirport(route.destination)]);
+  } else if (route === undefined) {
+    rows.push(['Rota', routes.failed(a.callsign) ? 'indisponível' : 'buscando…']);
+  } else {
+    rows.push(['Rota', 'desconhecida']);
+  }
+  if (official) rows.push(...officialRows(official));
+  if (!route) return rows;
   if (!routeFitsPosition(route.origin, route.destination, a)) {
-    rows.push(['Atenção', 'a rota não confere com a posição']);
+    rows.push(['Atenção', 'a linha da rota não confere com a posição']);
     return rows;
   }
   const p = flightProgress(route, a, a.speedKmh, Date.now());
-  rows.push(
-    ['Partida (estimada)', fmtClock(p.departedAt)],
-    ['Chegada (estimada)', fmtClock(p.arrivesAt)],
-    ['Progresso', `${p.percent}% · faltam ${Math.round(p.remainingKm)} km`],
-  );
+  if (!official) rows.push(['Partida (estimada)', fmtClock(p.departedAt)], ['Chegada (estimada)', fmtClock(p.arrivesAt)]);
+  rows.push(['Progresso', `${p.percent}% · faltam ${Math.round(p.remainingKm)} km`]);
   return rows;
+}
+
+const OFFICIAL_REFRESH_MS = 15 * 60_000;
+/** O pedido fica registado mesmo em erro: uma falha só tenta de novo no próximo ciclo, não a cada segundo. */
+const officialFlights = new Map<string, { at: number; value: OfficialFlight | null }>();
+
+function wantOfficialFlight(callsign: string): void {
+  const known = officialFlights.get(callsign);
+  if (known && Date.now() - known.at < OFFICIAL_REFRESH_MS) return;
+  const entry = { at: Date.now(), value: known?.value ?? null };
+  officialFlights.set(callsign, entry);
+  void fetchOfficialFlight(callsign)
+    .then((value) => (entry.value = value))
+    .catch(() => undefined);
 }
 
 const infoLoading = new Set<string>();
@@ -146,8 +203,12 @@ function renderPanel(hex: string | null): void {
   panel.hidden = !a;
   routeLayer.update(a?.hex ?? null, Date.now());
   if (!a) return;
-  if (a.callsign) routes.want(a.callsign, true);
+  if (a.callsign) {
+    routes.want(a.callsign, true);
+    wantOfficialFlight(a.callsign);
+  }
   wantAircraftInfo(a.hex);
+  const official = a.callsign ? officialFlights.get(a.callsign)?.value : null;
   const route = a.callsign ? routes.get(a.callsign) : null;
   const info = aircraftInfo.get(a.hex);
   const airline = route?.airline;
@@ -166,8 +227,12 @@ function renderPanel(hex: string | null): void {
     figure.querySelector('figcaption')!.textContent = info.photo.credit;
   }
 
-  const rowsRoute = routeRows(a, route);
-  panel.querySelector<HTMLElement>('.note')!.hidden = !rowsRoute.some(([k]) => k.startsWith('Partida'));
+  const rowsRoute = routeRows(a, route, official);
+  const note = panel.querySelector<HTMLElement>('.note')!;
+  note.hidden = !rowsRoute.some(([k]) => k.startsWith('Partida'));
+  note.textContent = official
+    ? 'Horários oficiais da FlightAware, na hora do seu dispositivo.'
+    : 'Horários estimados pela distância e velocidade atuais; não são os horários oficiais do voo.';
   const rows: [string, string][] = [
     ...rowsRoute,
     ['Aeronave', [info?.manufacturer, info?.model ?? a.type].filter(Boolean).join(' ') || '—'],

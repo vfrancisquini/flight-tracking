@@ -1,5 +1,6 @@
 import { ENRICH, fetchFirstOk, MAX_RADIUS_NM, TELEMETRY_PROVIDERS, type LiveQuery } from './shared/providers';
-import { AIRCRAFT_CACHE, cached, ROUTE_CACHE } from './cache';
+import type { OfficialFlight } from './shared/flight';
+import { AIRCRAFT_CACHE, cached, FLIGHT_CACHE, ROUTE_CACHE } from './cache';
 import { normalizeReadsb } from './normalize';
 import { parseAirline, parseHexdbAirport, parseHexdbRoute, parseRoute, type Route } from './routes';
 import type { Aircraft } from './types';
@@ -76,6 +77,18 @@ async function getJson(url: string): Promise<unknown> {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+/**
+ * Horários e status oficiais, só para o voo aberto no painel (cada consulta é paga).
+ * null se a fonte não conhecer o voo; lança erro se estiver indisponível ou no teto de gastos.
+ */
+export async function fetchOfficialFlight(callsign: string): Promise<OfficialFlight | null> {
+  return cached(FLIGHT_CACHE, callsign, async () => {
+    const res = await fetch(`/api/flight/${callsign}`, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as OfficialFlight | null;
+  });
 }
 
 /** Localização aproximada pelo IP, calculada pelo Worker. null se não houver. */
