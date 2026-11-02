@@ -1,4 +1,5 @@
 import { ENRICH, fetchFirstOk, MAX_RADIUS_NM, TELEMETRY_PROVIDERS, type LiveQuery } from './shared/providers';
+import { AIRCRAFT_CACHE, cached, ROUTE_CACHE } from './cache';
 import { normalizeReadsb } from './normalize';
 import { parseAirline, parseHexdbAirport, parseHexdbRoute, parseRoute, type Route } from './routes';
 import type { Aircraft } from './types';
@@ -14,15 +15,13 @@ export interface LiveResult {
   provider: string;
 }
 
-const ROUTE_CACHE_MS = 24 * 3600_000;
-
 /**
  * null quando a fonte não conhece a rota; lança erro em falha passageira.
  * Direto do navegador (o adsbdb tem CORS): pelo Worker, o IP partilhado da
  * Cloudflare recebe 429. Guarda no navegador para não repetir pedidos ao recarregar.
  */
 export async function fetchRoute(callsign: string): Promise<Route | null> {
-  return cached(`route2:${callsign}`, ROUTE_CACHE_MS, async () => {
+  return cached(ROUTE_CACHE, callsign, async () => {
     const route = parseRoute(await getJson(ENRICH.route(callsign)));
     return route ?? fetchHexdbRoute(callsign);
   });
@@ -57,7 +56,7 @@ export interface AircraftInfo {
 
 /** Fabricante, modelo, dono e foto. As duas fontes têm CORS. null se nenhuma conhecer o avião. */
 export async function fetchAircraftInfo(hex: string): Promise<AircraftInfo | null> {
-  return cached(`aircraft1:${hex}`, ROUTE_CACHE_MS * 7, async () => {
+  return cached(AIRCRAFT_CACHE, hex, async () => {
     const [details, photos] = await Promise.all([
       getJson(ENRICH.aircraft(hex)).catch(() => null),
       getJson(ENRICH.photo(hex)).catch(() => null),
@@ -77,23 +76,6 @@ async function getJson(url: string): Promise<unknown> {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
-}
-
-/** Guarda no navegador. Falhas (lançadas por `load`) não ficam guardadas. */
-async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
-  try {
-    const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as { at: number; value: T } | null;
-    if (saved && Date.now() - saved.at < ttlMs) return saved.value;
-  } catch {
-    // Sem armazenamento disponível: segue para a rede.
-  }
-  const value = await load();
-  try {
-    localStorage.setItem(key, JSON.stringify({ at: Date.now(), value }));
-  } catch {
-    // Armazenamento cheio ou bloqueado: o valor continua em memória.
-  }
-  return value;
 }
 
 /** Localização aproximada pelo IP, calculada pelo Worker. null se não houver. */
