@@ -86,6 +86,15 @@ describe('RouteStore', () => {
     expect(s.get('N123')).toBeNull();
   });
 
+  it('a rota oficial substitui a provável', async () => {
+    const s = new RouteStore(async () => route);
+    s.want('TAP1');
+    await tick();
+    const official = {} as Route;
+    s.set('TAP1', official);
+    expect(s.get('TAP1')).toBe(official);
+  });
+
   it('marca a falha, sem tentar de novo de imediato', async () => {
     const fetcher = vi.fn(async () => {
       throw new Error('HTTP 502');

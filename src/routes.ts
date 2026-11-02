@@ -95,6 +95,11 @@ export class RouteStore {
     return this.known.get(callsign);
   }
 
+  /** Substitui a rota provável por uma mais fiável (dados oficiais do voo). */
+  set(callsign: string, route: Route): void {
+    this.known.set(callsign, route);
+  }
+
   failed(callsign: string): boolean {
     return (this.retryAt.get(callsign) ?? 0) > Date.now();
   }

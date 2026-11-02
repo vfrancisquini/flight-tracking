@@ -2,7 +2,7 @@ import { ENRICH, fetchFirstOk, MAX_RADIUS_NM, TELEMETRY_PROVIDERS, type LiveQuer
 import type { OfficialFlight } from './shared/flight';
 import { AIRCRAFT_CACHE, cached, FLIGHT_CACHE, ROUTE_CACHE } from './cache';
 import { normalizeReadsb } from './normalize';
-import { parseAirline, parseHexdbAirport, parseHexdbRoute, parseRoute, type Route } from './routes';
+import { parseAirline, parseHexdbAirport, parseHexdbRoute, parseRoute, type Airline, type Route } from './routes';
 import type { Aircraft } from './types';
 
 /**
@@ -89,6 +89,17 @@ export async function fetchOfficialFlight(callsign: string): Promise<OfficialFli
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as OfficialFlight | null;
   });
+}
+
+/** A AeroAPI não dá coordenadas: busca no hexdb para desenhar a rota oficial no mapa. null se faltar algum aeroporto. */
+export async function fetchOfficialRoute(flight: OfficialFlight, airline: Airline | null): Promise<Route | null> {
+  const { origin, destination } = flight;
+  if (!origin?.icao || !destination?.icao) return null;
+  const [o, d] = await Promise.all([getJson(ENRICH.hexdbAirport(origin.icao)), getJson(ENRICH.hexdbAirport(destination.icao))]);
+  const from = parseHexdbAirport(o);
+  const to = parseHexdbAirport(d);
+  if (!from || !to) return null;
+  return { origin: { ...origin, lat: from.lat, lon: from.lon }, destination: { ...destination, lat: to.lat, lon: to.lon }, airline };
 }
 
 /** Localização aproximada pelo IP, calculada pelo Worker. null se não houver. */

@@ -1,7 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { DATA_MODE, fetchAircraftInfo, fetchLive, fetchOfficialFlight, fetchRoute, type AircraftInfo } from './api';
+import { DATA_MODE, fetchAircraftInfo, fetchLive, fetchOfficialFlight, fetchOfficialRoute, fetchRoute, type AircraftInfo } from './api';
 import type { FlightAirport, OfficialFlight } from './shared/flight';
 import { pruneCache } from './cache';
 import { fmtAge, fmtAltitude, fmtHeading, fmtSpeed, fmtVRate } from './format';
@@ -169,7 +169,15 @@ function wantOfficialFlight(callsign: string): void {
   const entry = { at: Date.now(), value: known?.value ?? null };
   officialFlights.set(callsign, entry);
   void fetchOfficialFlight(callsign)
-    .then((value) => (entry.value = value))
+    .then(async (value) => {
+      entry.value = value;
+      if (!value) return;
+      // A rota da base gratuita pode estar desatualizada: a linha passa a seguir a oficial.
+      const current = routes.get(callsign);
+      if (current && current.origin.icao === value.origin?.icao && current.destination.icao === value.destination?.icao) return;
+      const route = await fetchOfficialRoute(value, current?.airline ?? null);
+      if (route) routes.set(callsign, route);
+    })
     .catch(() => undefined);
 }
 
@@ -216,8 +224,10 @@ function renderPanel(hex: string | null): void {
   setImage(logoEl, airline?.iata ? `https://pics.avs.io/96/96/${airline.iata}.png` : null);
   panel.querySelector('.airline')!.textContent = airline?.name ?? info?.owner ?? '';
   const routeLine = panel.querySelector<HTMLElement>('.route-line')!;
-  routeLine.hidden = !route;
-  if (route) routeLine.textContent = `${route.origin.city ?? route.origin.iata ?? '?'} → ${route.destination.city ?? route.destination.iata ?? '?'}`;
+  const from = official?.origin ?? route?.origin;
+  const to = official?.destination ?? route?.destination;
+  routeLine.hidden = !from || !to;
+  if (from && to) routeLine.textContent = `${from.city ?? from.iata ?? '?'} → ${to.city ?? to.iata ?? '?'}`;
 
   const figure = panel.querySelector<HTMLElement>('.photo')!;
   figure.hidden = !info?.photo;
