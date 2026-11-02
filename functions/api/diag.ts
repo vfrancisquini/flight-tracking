@@ -11,7 +11,7 @@ interface Ctx {
   env: Env;
 }
 
-const TOKEN_SHA256 = '980972df0ea4308f6a73afc1d1c109af342a6030c3db5d7990ee00ae8043151b';
+const TOKEN_SHA256 = '8a845a939631d0640b9d94e2488a206267ba014bc1c3c74d9d22aaa8889de4f4';
 const UA = { 'User-Agent': 'radar-voos/0.1 (projeto pessoal, nao comercial)', Accept: 'application/json' };
 const BBOX = 'lamin=37.5&lomin=-10.5&lamax=40&lomax=-7.5';
 
