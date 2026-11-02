@@ -23,8 +23,8 @@ describe('Worker /api', () => {
   it('rejeita parâmetros inválidos sem chamar upstream', async () => {
     const spy = vi.spyOn(globalThis, 'fetch');
     expect((await onRequestGet(ctx('live?lat=abc&lon=1&dist=10'))).status).toBe(400);
-    expect((await onRequestGet(ctx('route/..%2Fx'))).status).toBe(400);
-    expect((await onRequestGet(ctx('aircraft/zzzzzz'))).status).toBe(400);
+    expect((await onRequestGet(ctx('callsign/..%2Fx'))).status).toBe(400);
+    expect((await onRequestGet(ctx('hex/zzzzzz'))).status).toBe(400);
     expect((await onRequestGet(ctx('nada'))).status).toBe(404);
     expect(spy).not.toHaveBeenCalled();
   });
@@ -40,11 +40,19 @@ describe('Worker /api', () => {
   });
 
   it('serve do cache no segundo pedido', async () => {
-    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"response":{}}'));
-    await onRequestGet(ctx('route/azu4152'));
-    await onRequestGet(ctx('route/azu4152'));
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ac":[]}'));
+    await onRequestGet(ctx('callsign/azu4152'));
+    await onRequestGet(ctx('callsign/azu4152'));
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(String(spy.mock.calls[0]?.[0])).toBe('https://api.adsbdb.com/v0/callsign/AZU4152');
+    expect(String(spy.mock.calls[0]?.[0])).toBe('https://api.adsb.lol/v2/callsign/AZU4152');
+  });
+
+  it('já não serve rotas, aeronaves nem fotos (o navegador busca direto)', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch');
+    for (const path of ['route/AZU4152', 'aircraft/e48a12', 'photo/e48a12']) {
+      expect((await onRequestGet(ctx(path))).status).toBe(404);
+    }
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('serve a última telemetria boa, identificada, quando todas as fontes falham', async () => {

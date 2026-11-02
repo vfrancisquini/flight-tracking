@@ -151,8 +151,6 @@ $('run').onclick = async () => {
   const hex = sample ? sample.hex : 'e48a12';
 
   await probe(`Worker /api/callsign (${cs})`, `api/callsign/${cs}`, acSummary);
-  await probe(`Worker /api/route (${cs})`, `api/route/${cs}`,
-    (b) => { const r = b.response?.flightroute; return r ? `${r.origin?.icao_code} → ${r.destination?.icao_code}` : b.response; });
   await probe(`callsign adsb.lol (${cs})`, `https://api.adsb.lol/v2/callsign/${cs}`, acSummary);
   await probe(`rota adsbdb (${cs})`, `https://api.adsbdb.com/v0/callsign/${cs}`,
     (b) => { const r = b.response?.flightroute; return r ? `${r.origin?.icao_code} ${r.origin?.name} → ${r.destination?.icao_code} ${r.destination?.name}` : b.response; });

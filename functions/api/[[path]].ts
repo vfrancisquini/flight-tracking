@@ -5,17 +5,16 @@
  * - Failover entre fornecedores de telemetria.
  * Só monta URLs a partir de parâmetros validados (sem proxy aberto / SSRF).
  *
+ * Rotas, dados da aeronave e fotos NÃO passam por aqui: essas APIs têm CORS e o
+ * adsbdb responde 429 ao IP partilhado da Cloudflare, por isso o navegador chama-as direto.
+ *
  *   GET /api/live?lat=&lon=&dist=   telemetria por raio (NM, máx. 250)
  *   GET /api/callsign/:cs            procurar voo pelo callsign (global)
  *   GET /api/hex/:hex                procurar aeronave pelo ICAO 24-bit
- *   GET /api/route/:cs               origem/destino (adsbdb)
- *   GET /api/aircraft/:hex           matrícula/modelo/operador (adsbdb)
- *   GET /api/photo/:hex              foto (planespotters)
  *   GET /api/geo                     localização aproximada do visitante, pelo IP (dados da Cloudflare)
  */
 import {
   CALLSIGN_RE,
-  ENRICH,
   fetchFirstOk,
   HEX_RE,
   parseLiveQuery,
@@ -31,7 +30,7 @@ interface Ctx {
 const USER_AGENT = 'radar-voos/0.1 (projeto pessoal, nao comercial)';
 
 /** Segundos de cache na edge por tipo. */
-const TTL = { live: 5, lookup: 10, route: 86_400, aircraft: 604_800, photo: 86_400 } as const;
+const TTL = { live: 5, lookup: 10 } as const;
 const STALE_TTL = 120;
 
 interface Plan {
@@ -58,12 +57,6 @@ function plan(kind: string | undefined, arg: string | undefined, search: URLSear
       return CALLSIGN_RE.test(cs) ? telemetry((p) => p.callsign(cs), TTL.lookup) : bad('callsign inválido');
     case 'hex':
       return HEX_RE.test(hex) ? telemetry((p) => p.hex(hex), TTL.lookup) : bad('hex inválido');
-    case 'route':
-      return CALLSIGN_RE.test(cs) ? { urls: [ENRICH.route(cs)], names: ['adsbdb'], ttl: TTL.route } : bad('callsign inválido');
-    case 'aircraft':
-      return HEX_RE.test(hex) ? { urls: [ENRICH.aircraft(hex)], names: ['adsbdb'], ttl: TTL.aircraft } : bad('hex inválido');
-    case 'photo':
-      return HEX_RE.test(hex) ? { urls: [ENRICH.photo(hex)], names: ['planespotters'], ttl: TTL.photo } : bad('hex inválido');
     default:
       return json({ error: 'not_found' }, 404);
   }
@@ -95,7 +88,7 @@ export async function onRequestGet(ctx: Ctx): Promise<Response> {
         'x-provider': p.names[index] ?? '?',
       },
     });
-    // 404 também é informação útil (ex.: callsign sem rota conhecida) — cacheia.
+    // 404 também é informação útil (ex.: hex desconhecido) — cacheia.
     if (res.ok || res.status === 404) ctx.waitUntil(cache.put(key, out.clone()));
     if (staleKey && res.ok) {
       const headers = new Headers(out.headers);
