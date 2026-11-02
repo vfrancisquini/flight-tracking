@@ -57,3 +57,42 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 }
 #probe-link:hover, #probe-link:focus-visible { color: var(--text); }
 @media (max-width: 640px) { #probe-link { top: auto; bottom: 12px; right: auto; left: 12px; } }
+
+/* Botão "centralizar em mim" */
+.maplibregl-ctrl-group button.locate-btn { display: grid; place-items: center; color: #333; }
+.locate-btn[data-state='active'] { color: #0a84ff; }
+.locate-btn[data-state='denied'] { color: #b0b0b5; }
+.locate-btn[data-state='locating'] svg { animation: locate-pulse 1s ease-in-out infinite; color: #0a84ff; }
+@keyframes locate-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .locate-btn[data-state='locating'] svg { animation: none; } }
+/* Alvos de toque maiores no celular */
+@media (pointer: coarse) { .maplibregl-ctrl-group button { width: 40px; height: 40px; } }
+
+/* Aviso flutuante */
+#toast {
+  position: fixed; z-index: 5; left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(440px, calc(100% - 24px));
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; justify-content: space-between;
+  padding: 12px 12px 12px 16px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(8px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); font-size: 14px;
+}
+#toast[hidden] { display: none; }
+.toast-body { min-width: 0; flex: 1 1 170px; }
+.toast-title { margin: 0; font-weight: 600; line-height: 1.35; padding-top: 6px; }
+.toast-steps { margin: 8px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.45; display: grid; gap: 4px; }
+.toast-steps[hidden] { display: none; }
+.toast-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; margin-left: auto; }
+.toast-action {
+  font: inherit; font-weight: 600; color: #fff; background: #0a84ff; border: 0; border-radius: 8px;
+  padding: 8px 12px; cursor: pointer; white-space: nowrap;
+}
+.toast-action[hidden] { display: none; }
+.toast-close { background: none; border: 0; color: var(--muted); font-size: 22px; line-height: 1; padding: 4px 8px; cursor: pointer; }
+.toast-action:focus-visible, .toast-close:focus-visible, .locate-btn:focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+@media (max-width: 640px) {
+  /* Deixa livres os botões do mapa no canto inferior direito. */
+  #toast { left: 12px; transform: none; width: auto; right: 60px; bottom: calc(44px + env(safe-area-inset-bottom, 0px)); }
+  #toast:has(.toast-steps:not([hidden])) { right: 12px; }
+}

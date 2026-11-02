@@ -1,19 +1,21 @@
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { DATA_MODE, fetchAircraftInfo, fetchIpLocation, fetchLive, fetchRoute, type AircraftInfo } from './api';
+import { DATA_MODE, fetchAircraftInfo, fetchLive, fetchRoute, type AircraftInfo } from './api';
+import { pruneCache } from './cache';
 import { fmtAge, fmtAltitude, fmtHeading, fmtSpeed, fmtVRate } from './format';
 import { routeFitsPosition, viewportToQuery } from './geo';
 import { AircraftLayer } from './map/aircraftLayer';
 import { RouteLayer } from './map/routeLayer';
+import { UserLocation } from './map/userLocation';
 import { Poller } from './poller';
 import { flightProgress, RouteStore, type Airport, type Route } from './routes';
 import { AircraftStore } from './store';
+import { Toast } from './toast';
 import type { Aircraft } from './types';
 
 const POLL_MS = 10_000;
 const STALE_MS = 60_000;
-const LOCATED_ZOOM = 9;
 const FALLBACK_VIEW = { center: [-46.63, -23.55] as [number, number], zoom: 7 }; // São Paulo
 
 /** Vista inicial vinda da URL: ?lat=38.8777&lon=-9.0815&z=10 (tem prioridade sobre a localização). */
@@ -201,41 +203,15 @@ map.on('error', (e) => {
   statusEl.textContent = `⚠ Não foi possível carregar o mapa base: ${e.error?.message ?? 'erro de rede'}`;
 });
 
-/**
- * Abre logo no local aproximado pelo IP e passa para o GPS se for autorizado.
- * Só move o mapa se a URL não indicar a vista e o utilizador ainda não o tiver mexido.
- */
-function startLocation(): void {
-  const dot = document.createElement('div');
-  const marker = new maplibregl.Marker({ element: dot });
-  let userMoved = !!URL_VIEW;
-  let hasGps = false;
-  map.on('dragstart', () => (userMoved = true));
-  map.on('zoomstart', (e) => {
-    if ('originalEvent' in e) userMoved = true;
-  });
+const userLocation = new UserLocation(map, new Toast($('#toast')), {
+  urlView: !!URL_VIEW,
+  onNote: (note) => (locationNote = note),
+});
+map.addControl(userLocation.control, 'bottom-right');
+void userLocation.start();
 
-  const place = (lat: number, lon: number, approximate: boolean) => {
-    dot.className = approximate ? 'me-dot approx' : 'me-dot';
-    dot.title = approximate ? 'Sua localização aproximada (pelo IP)' : 'Sua localização';
-    locationNote = approximate ? 'localização aproximada (IP)' : '';
-    marker.setLngLat([lon, lat]).addTo(map);
-    if (!userMoved) map.jumpTo({ center: [lon, lat], zoom: LOCATED_ZOOM });
-  };
-
-  void fetchIpLocation().then((ip) => {
-    if (ip && !hasGps) place(ip.lat, ip.lon, true);
-  });
-  navigator.geolocation?.getCurrentPosition(
-    (pos) => {
-      hasGps = true;
-      place(pos.coords.latitude, pos.coords.longitude, false);
-    },
-    () => undefined,
-    { timeout: 8000, maximumAge: 600_000 },
-  );
-}
-startLocation();
+// Limpa rotas e aeronaves vencidas do cache do navegador, sem atrasar a abertura.
+setTimeout(() => pruneCache(), 3000);
 
 map.on('load', () => {
   routeLayer = new RouteLayer(map, store, routes);
