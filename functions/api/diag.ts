@@ -58,7 +58,7 @@ export async function onRequestGet({ request, env }: Ctx): Promise<Response> {
 
   let url: string;
   let headers: Record<string, string> = UA;
-  const opensky = test.startsWith('opensky_');
+  const opensky = test.startsWith('opensky_') && test !== 'opensky_anon';
   if (opensky) {
     const t = await openskyToken(env);
     if (!t.token) return Response.json({ tokenStatus: t.status, error: t.error });
@@ -80,6 +80,10 @@ export async function onRequestGet({ request, env }: Ctx): Promise<Response> {
     airlabs_fleets: air(`fleets?hex=${hex}`),
     airlabs_nearby: air('nearby?lat=38.77&lng=-9.13&distance=30'),
     airlabs_suggest: air('suggest?q=Lisb'),
+    openaip_query: aip(`airports?${near}&apiKey=${env.openaip_key}`),
+    openaip_noua: aip(`airports?${near}`),
+    opensky_anon: 'https://opensky-network.org/api/states/all?lamin=38&lomin=-10&lamax=39&lomax=-9',
+    airlabs_hex: air(`flights?hex=${hex}`),
     openaip_airports: aip(`airports?${near}`),
     openaip_airspaces: aip(`airspaces?${near}`),
     openaip_navaids: aip(`navaids?${near}`),
@@ -93,6 +97,8 @@ export async function onRequestGet({ request, env }: Ctx): Promise<Response> {
   url = urls[test] ?? '';
   if (!url) return new Response('teste desconhecido', { status: 400 });
   if (test.startsWith('openaip_')) headers = aipHeaders;
+  if (test === 'openaip_query') headers = UA;
+  if (test === 'openaip_noua') headers = { 'x-openaip-api-key': env.openaip_key ?? '' };
   if (test.startsWith('aeroapi_')) headers = { ...UA, 'x-apikey': env.flightaware_key ?? '' };
 
   const start = Date.now();
